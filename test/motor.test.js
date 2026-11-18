@@ -222,3 +222,29 @@ test('maestro: RECIBE desconocido se detecta y esa fila no se envía', () => {
   const r = prechequeo({ mes: 10, anio: 2026, maestro: filas, nominas: [f('x nom 10.pdf')], rnt: [], rlc: [] });
   assert.equal(cliente(r, 'x').estado, ESTADO.INCIDENCIA);
 });
+
+test('empresa nueva: nómina y seguros sociales sin fila en el maestro se proponen como candidatos', () => {
+  const r = prechequeo({
+    mes: 10, anio: 2026, maestro: BASE,
+    nominas: [f('floristeria nom 10.pdf'), f('ferreteria nom 09.pdf')],
+    rnt: [f('FLORES DEL VALLE SL.pdf'), f('FLORES DEL VALLE SL (2).pdf'), f('RNT.pdf')],
+    rlc: [f('FLORES DEL VALLE SL.pdf'), f('RLC.pdf')],
+  });
+  assert.deepEqual(r.nuevas.nominas, [{ alias: 'floristeria', ruta: 'floristeria nom 10.pdf' }]);
+  assert.deepEqual(r.nuevas.seguros, [{
+    razon: 'FLORES DEL VALLE SL',
+    rnt: ['FLORES DEL VALLE SL.pdf', 'FLORES DEL VALLE SL (2).pdf'], rlc: ['FLORES DEL VALLE SL.pdf'],
+  }]);
+  assert.equal(r.nuevas.sinRenombrar.length, 2);
+  assert.equal(r.nuevas.otros.length, 1); // la nómina de otro mes no es una empresa nueva
+});
+
+test('empresa nueva: al añadirla al maestro con su correo pasa a LISTO', () => {
+  const m = leerMaestro([CABECERA, ['floristeria', 'FLORES DEL VALLE SL', 'flores@example.com', 'AMBAS', null]]).filas;
+  const r = prechequeo({
+    mes: 10, anio: 2026, maestro: m,
+    nominas: [f('floristeria nom 10.pdf')], rnt: [f('FLORES DEL VALLE SL.pdf')], rlc: [f('FLORES DEL VALLE SL.pdf')],
+  });
+  assert.equal(cliente(r, 'floristeria').estado, ESTADO.LISTO);
+  assert.equal(r.huerfanos.length, 0);
+});

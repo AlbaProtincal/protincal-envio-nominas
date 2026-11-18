@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Envío de nóminas PROTINCAL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Plan: herramienta de trabajo en una columna; resumen arriba, lo que bloquea antes que lo que está listo. */
+:root {
+  --fondo: #f3f5f4; --papel: #ffffff; --tinta: #17201f; --tenue: #5d6b69; --linea: #d9dfdd;
+  --acento: #0f5c63; --acento-tinta: #ffffff; --acento-suave: #e2eeee;
+  --ok: #1d6b3a; --ok-suave: #e3f1e7; --ojo: #8a5a00; --ojo-suave: #fbefd5; --mal: #a3271f; --mal-suave: #fbe6e3;
+  --titulo: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --texto: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --fondo: #111817; --papel: #1a2322; --tinta: #e8eeec; --tenue: #9aa8a5; --linea: #2f3b39;
+    --acento: #6cc4c9; --acento-tinta: #06292c; --acento-suave: #173436;
+    --ok: #7fd09a; --ok-suave: #17321f; --ojo: #e6b85a; --ojo-suave: #3a2d10; --mal: #f09a91; --mal-suave: #3d1b18;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --fondo: #111817; --papel: #1a2322; --tinta: #e8eeec; --tenue: #9aa8a5; --linea: #2f3b39;
+  --acento: #6cc4c9; --acento-tinta: #06292c; --acento-suave: #173436;
+  --ok: #7fd09a; --ok-suave: #17321f; --ojo: #e6b85a; --ojo-suave: #3a2d10; --mal: #f09a91; --mal-suave: #3d1b18;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--fondo); color: var(--tinta); font: 400 15px/1.5 var(--texto); }
+#app { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; display: flex; flex-direction: column; gap: 20px; }
+h1, h2, h3 { font-family: var(--titulo); font-weight: 600; margin: 0; text-wrap: balance; }
+h1 { font-size: 30px; line-height: 1.1; }
+h2 { font-size: 20px; }
+h3 { font-size: 16px; }
+p { margin: 0; }
+code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
+.tenue { color: var(--tenue); }
+.eti { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--tenue); }
+.top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.marca { font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--acento); }
+.periodo { display: flex; flex-direction: column; align-items: flex-end; }
+.mes { font: 600 18px var(--titulo); }
+.demo { border: 1px dashed var(--linea); border-radius: 6px; padding: 8px 12px; color: var(--tenue); font-size: 13px; }
+.hecho { background: var(--ok-suave); color: var(--ok); border-radius: 6px; padding: 10px 12px; font-weight: 500; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.tile { background: var(--papel); border: 1px solid var(--linea); border-radius: 8px; padding: 12px; text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 2px; border-top: 3px solid var(--linea); }
+.tile .n { font: 600 28px/1 var(--titulo); font-variant-numeric: tabular-nums; }
+.tile .t { font-size: 13px; color: var(--tenue); }
+.tile.ok { border-top-color: var(--ok); } .tile.ok .n { color: var(--ok); }
+.tile.ojo { border-top-color: var(--ojo); } .tile.ojo .n { color: var(--ojo); }
+.tile.mal { border-top-color: var(--mal); } .tile.mal .n { color: var(--mal); }
+.sec { background: var(--papel); border: 1px solid var(--linea); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.sec.atencion { border-left: 4px solid var(--mal); }
+.sec > header { display: flex; align-items: baseline; gap: 10px; }
+.num { font: 500 14px var(--mono); color: var(--tenue); }
+.ayuda { color: var(--tenue); font-size: 14px; max-width: 65ch; }
+.bloque { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--linea); }
+.bloque:first-of-type { border-top: 0; padding-top: 0; }
+.lista, .ficheros, .repaso { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.cli { border-top: 1px solid var(--linea); }
+.cli:first-child { border-top: 0; }
+.cli.fuera .nombre { opacity: .5; }
+.cab { display: flex; align-items: center; gap: 10px; padding: 8px 0; flex-wrap: wrap; }
+.cab input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--acento); flex: none; }
+.nombre { flex: 1 1 220px; min-width: 0; background: none; border: 0; padding: 4px; margin: -4px; text-align: left; color: inherit; font: inherit; cursor: pointer; display: flex; flex-direction: column; border-radius: 4px; }
+.nombre:hover .alias { text-decoration: underline; }
+.alias { font-weight: 600; }
+.correo { font: 400 13px var(--mono); color: var(--tenue); overflow-wrap: anywhere; }
+.lado { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+.pil { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--acento-suave); color: var(--acento); white-space: nowrap; }
+.pil.ok { background: var(--ok-suave); color: var(--ok); }
+.pil.ojo, .pil.aviso { background: var(--ojo-suave); color: var(--ojo); white-space: normal; }
+.pil.mal { background: var(--mal-suave); color: var(--mal); white-space: normal; }
+.detalle { padding: 4px 0 12px 28px; display: flex; flex-direction: column; gap: 6px; }
+.ficheros { gap: 2px; }
+.ficheros li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.ficheros .eti { min-width: 64px; }
+.nota { font-size: 13px; color: var(--ojo); }
+.vacio { color: var(--tenue); font-size: 14px; }
+.barra { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--linea); color: var(--tenue); font-size: 14px; }
+.b { font: 500 14px var(--texto); padding: 8px 14px; border-radius: 6px; border: 1px solid var(--linea); background: var(--papel); color: var(--tinta); cursor: pointer; }
+.b:hover { border-color: var(--acento); }
+.b.prim { background: var(--acento); border-color: var(--acento); color: var(--acento-tinta); }
+.b:disabled { opacity: .45; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.botones { display: flex; gap: 8px; flex-wrap: wrap; }
+.nueva { border: 1px solid var(--linea); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 12px; background: var(--fondo); }
+.campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.campos label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; }
+.campos input:not([type=checkbox]), .campos select { font: 400 15px var(--texto); padding: 8px 10px; border: 1px solid var(--linea); border-radius: 6px; background: var(--papel); color: var(--tinta); min-width: 0; }
+.campos .check { flex-direction: row; align-items: center; gap: 8px; align-self: end; padding-bottom: 8px; }
+.error { color: var(--mal); font-weight: 500; font-size: 14px; }
+.confirma { display: flex; flex-direction: column; gap: 12px; }
+.repaso { gap: 8px; counter-reset: r; }
+.repaso li { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 1.5fr); column-gap: 12px; padding: 8px 0; border-top: 1px solid var(--linea); }
+.repaso li .tenue { grid-column: 1 / -1; font-size: 13px; }
+.cuerpo { margin: 0; font: 400 14px/1.5 var(--texto); white-space: pre-wrap; background: var(--fondo); border-radius: 6px; padding: 12px; }
+.plegada summary { cursor: pointer; font: 600 16px var(--titulo); }
+.pie { color: var(--tenue); font-size: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .tiles { grid-template-columns: repeat(2, 1fr); }
+  .campos { grid-template-columns: 1fr; }
+  .periodo { align-items: flex-start; }
+  .detalle { padding-left: 0; }
+  .repaso li { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<main id="app"><p class="vacio">Cargando…</p></main>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

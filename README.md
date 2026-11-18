@@ -13,7 +13,8 @@ Los documentos y el maestro viven en el OneDrive de PROTINCAL.
 | División de nóminas en individuales (`src/dividir.js`) | Hecho y probado |
 | Lectura de carpetas y maestro desde OneDrive (Microsoft Graph) | Pendiente del registro de la app en Microsoft 365 |
 | Envío de correos y verificación en Enviados | Pendiente |
-| Pantalla (página web) | Pendiente |
+| Pantalla del pre-chequeo (`index.html`, `src/app.js`) | Hecha con datos de demostración (`src/demo.js`) |
+| Alta de empresas nuevas desde la pantalla | Hecha en la demostración; falta escribir en el maestro real |
 
 ## Qué hace el motor
 
@@ -39,6 +40,12 @@ Además lista los **huérfanos**: ficheros que no casan con ninguna fila del mae
   Solo se tolera la puntuación; una razón social parecida no casa.
 - Si dos clientes comparten correo, el asunto lleva el nombre de la empresa.
 - Comprobación final: ningún fichero puede quedar asignado a dos correos.
+
+## Empresas nuevas
+
+Si en las carpetas hay una nómina o unos seguros sociales que no casan con ninguna fila del maestro, la pantalla
+los muestra como empresa nueva y pregunta a qué correo se envían. Hasta que no se responde, esos documentos no
+se adjuntan a nadie. La respuesta se guarda como fila nueva del maestro (o como `NADA` si no se le envía).
 
 ## Nóminas individuales
 

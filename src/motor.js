@@ -361,6 +361,7 @@ export function prechequeo(e) {
     }
   }
 
+  const nuevas = candidatosNuevos(huerfanos);
   const de = (estado) => clientes.filter((c) => c.estado === estado);
   return {
     mes, anio, asuntoBase,
@@ -373,9 +374,42 @@ export function prechequeo(e) {
     incidencias: de(ESTADO.INCIDENCIA),
     noSeEnvia: de(ESTADO.NO_SE_ENVIA),
     huerfanos,
+    nuevas,
     ambiguos,
     ignorados,
   };
+}
+
+/**
+ * Agrupa los ficheros huérfanos en posibles empresas nuevas, para preguntar a qué correo se envían.
+ * No decide nada: solo propone un alias (del nombre de la nómina) o una razón social (del RNT/RLC).
+ * Una nómina y unos seguros sociales de la misma empresa no se pueden unir por el nombre: los une la persona.
+ */
+export function candidatosNuevos(huerfanos) {
+  const nominas = [];
+  const seguros = new Map();
+  const sinRenombrar = [];
+  const otros = [];
+  for (const h of huerfanos) {
+    const nombre = h.ruta.split(/[\\/]/).pop();
+    const base = sinExtension(nombre);
+    const w = palabras(base);
+    if (h.carpeta === 'Nóminas') {
+      if (!/No casa con ningún alias/.test(h.motivo)) { otros.push(h); continue; }
+      // "margarita lopez nom 10" → alias "margarita lopez"
+      const corte = w.findIndex((x) => x === 'nom' || x === 'nomina' || x === 'nominas');
+      const alias = (corte > 0 ? w.slice(0, corte) : w.slice(0, -1)).join(' ');
+      if (!alias) { otros.push(h); continue; }
+      nominas.push({ alias, ruta: h.ruta });
+    } else {
+      if (w.length === 1 && (w[0] === 'rnt' || w[0] === 'rlc')) { sinRenombrar.push(h); continue; }
+      const razon = base.replace(/\s*\(?\d{1,2}\)?\s*$/, '').trim();
+      const k = palabras(razon).join(' ');
+      if (!seguros.has(k)) seguros.set(k, { razon, rnt: [], rlc: [] });
+      seguros.get(k)[h.carpeta === 'RNT' ? 'rnt' : 'rlc'].push(h.ruta);
+    }
+  }
+  return { nominas, seguros: [...seguros.values()], sinRenombrar, otros };
 }
 
 function cuenta(nominas, rnt, rlc) {
