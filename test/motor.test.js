@@ -1,7 +1,7 @@
 // Pruebas del motor con datos INVENTADOS (ningún cliente real).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leerMaestro, prechequeo, periodoSeguros, carpetasDelMes, palabras, ESTADO } from '../src/motor.js';
+import { leerMaestro, prechequeo, periodoSeguros, carpetasDelMes, palabras, textoCorreo, ESTADO } from '../src/motor.js';
 
 const CABECERA = ['CLIENTE / ALIAS NÓMINA', 'RAZÓN SOCIAL en RNT/RLC', 'EMAIL', 'RECIBE', 'NOTAS'];
 const maestro = (...filas) => leerMaestro([CABECERA, ...filas]).filas;
@@ -247,4 +247,22 @@ test('empresa nueva: al añadirla al maestro con su correo pasa a LISTO', () => 
   });
   assert.equal(cliente(r, 'floristeria').estado, ESTADO.LISTO);
   assert.equal(r.huerfanos.length, 0);
+});
+
+test('texto del correo según lo que se adjunta', () => {
+  const t = (nNominas, tieneSS, aTrabajador) => textoCorreo({ nNominas, tieneSS, aTrabajador }).replace(/\n+/g, ' ');
+  assert.equal(t(1, false), 'Buenos días, Adjunto la nómina del mes en curso.');
+  assert.equal(t(3, false), 'Buenos días, Adjunto las nóminas del mes en curso.');
+  assert.equal(t(3, true), 'Buenos días, Adjunto las nóminas y seguros sociales del mes en curso.');
+  assert.equal(t(1, true), 'Buenos días, Adjunto la nómina y seguros sociales del mes en curso.');
+  assert.equal(t(0, true), 'Buenos días, Adjunto los seguros sociales del mes en curso.');
+  assert.equal(t(1, false, true), 'Buenos días, se adjunta la nómina del mes en curso.');
+});
+
+test('un PDF conjunto con varias nóminas dentro cuenta como varias nóminas', () => {
+  const m = maestro(['ferreteria', null, 'ferre@example.com', 'NOMINA', null]);
+  const una = prechequeo({ mes: 10, anio: 2026, maestro: m, nominas: [{ ruta: 'ferreteria nom 10.pdf', nominas: 1 }], rnt: [], rlc: [] });
+  const varias = prechequeo({ mes: 10, anio: 2026, maestro: m, nominas: [{ ruta: 'ferreteria nom 10.pdf', nominas: 5 }], rnt: [], rlc: [] });
+  assert.match(una.listos[0].texto, /Adjunto la nómina del/);
+  assert.match(varias.listos[0].texto, /Adjunto las nóminas del/);
 });

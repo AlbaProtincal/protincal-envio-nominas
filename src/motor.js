@@ -51,6 +51,20 @@ function contieneSecuencia(pajar, aguja) {
   return false;
 }
 
+/**
+ * Texto del correo según lo que lleva adjunto.
+ * @param {number}  nNominas     Nóminas que van en el envío (contando las de dentro de un PDF conjunto)
+ * @param {boolean} tieneSS      Lleva RNT/RLC
+ * @param {boolean} aTrabajador  Va directamente al trabajador, no a la empresa
+ */
+export function textoCorreo({ nNominas, tieneSS, aTrabajador = false }) {
+  if (aTrabajador) return 'Buenos días, se adjunta la nómina del mes en curso.';
+  const nominas = nNominas > 1 ? 'las nóminas' : nNominas === 1 ? 'la nómina' : '';
+  const que = nominas && tieneSS ? `${nominas} y seguros sociales`
+    : nominas || 'los seguros sociales';
+  return `Buenos días,\n\nAdjunto ${que} del mes en curso.`;
+}
+
 /** Periodo de seguros sociales = mes de la nómina − 1 (enero → diciembre del año anterior). */
 export function periodoSeguros(mes, anio) {
   return mes === 1 ? { mes: 12, anio: anio - 1 } : { mes: mes - 1, anio };
@@ -368,12 +382,15 @@ export function prechequeo(e) {
     if (!quiereNomina && nominas.length) avisos.push('Tiene nómina pero el maestro dice solo SS: no se adjunta');
 
     const adjuntos = [
-      ...(quiereNomina ? nominas.map((f) => ({ tipo: 'nomina', carpeta: 'Nóminas', ruta: f.ruta, bytes: f.bytes ?? 0 })) : []),
+      ...(quiereNomina ? nominas.map((f) => ({ tipo: 'nomina', carpeta: 'Nóminas', ruta: f.ruta, bytes: f.bytes ?? 0, nominas: f.nominas ?? 1 })) : []),
       ...(quiereSS ? rnt.map((f) => ({ tipo: 'rnt', carpeta: 'RNT', ruta: f.ruta, bytes: f.bytes ?? 0 })) : []),
       ...(quiereSS ? rlc.map((f) => ({ tipo: 'rlc', carpeta: 'RLC', ruta: f.ruta, bytes: f.bytes ?? 0 })) : []),
     ];
+    const nNominas = adjuntos.filter((x) => x.tipo === 'nomina').reduce((n, x) => n + x.nominas, 0);
     return {
       ...base,
+      nNominas,
+      texto: textoCorreo({ nNominas, tieneSS: adjuntos.some((x) => x.tipo !== 'nomina') }),
       estado: faltan.length ? ESTADO.PENDIENTE : ESTADO.LISTO,
       adjuntos: faltan.length ? [] : adjuntos,
       cuenta: cuenta(quiereNomina ? nominas : [], quiereSS ? rnt : [], quiereSS ? rlc : []),
@@ -387,7 +404,8 @@ export function prechequeo(e) {
   function porTrabajador(r) {
     const sub = subcarpetaDeFila.get(r.id);
     const sueltasFila = nominaDeFila.get(r.id) ?? [];
-    const comun = { fila: r.fila, recibe: 'NOMINA', notas: r.notas, individuales: true, empresa: r.id, porDividir: null };
+    const comun = { fila: r.fila, recibe: 'NOMINA', notas: r.notas, individuales: true, empresa: r.id, porDividir: null,
+      nNominas: 1, texto: textoCorreo({ nNominas: 1, tieneSS: false, aTrabajador: true }) };
     const asunto = `NOMINA ${MESES[mes - 1]} ${anio}`;
     const fechaConjunta = Math.max(...sueltasFila.map((f) => f.modificado ?? 0), 0);
     const fechaIndiv = sub ? Math.min(...sub.ficheros.map((f) => f.modificado ?? Infinity)) : Infinity;

@@ -1,6 +1,7 @@
 // Datos de demostración: todo inventado. Sirven para ver la pantalla sin conectar con Microsoft 365.
 const KB = 1024;
-const pdf = (ruta, kb = 110, modificado = 100) => ({ ruta, bytes: kb * KB, modificado });
+// `nominas` = cuántas nóminas hay dentro del PDF (en la app real se cuenta leyendo el PDF).
+const pdf = (ruta, kb = 110, modificado = 100, nominas = 1) => ({ ruta, bytes: kb * KB, modificado, nominas });
 
 export const demo = {
   mes: 11,
@@ -26,7 +27,7 @@ export const demo = {
     ['asociacion barrio', 'LUCIA PRADO NAVA', 'lucia.prado@correo.example'],
   ],
   nominas: [
-    pdf('panaderia luna nom 11.pdf', 128), pdf('talleres sol nom 11.pdf', 152), pdf('ferreteria mar nom 11.pdf', 104),
+    pdf('panaderia luna nom 11.pdf', 128, 100, 4), pdf('talleres sol nom 11.pdf', 152, 100, 7), pdf('ferreteria mar nom 11.pdf', 104),
     pdf('optica norte nom 11.pdf', 119), pdf('clinica norte nom 11.pdf', 133),
     pdf('ingenieria delta nom 11.pdf', 121),
     pdf('estudio rio nom 11.pdf', 136),
