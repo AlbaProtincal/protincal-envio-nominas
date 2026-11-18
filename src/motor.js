@@ -80,7 +80,7 @@ export function leerMaestro(tabla) {
   const errores = [];
   tabla.slice(1).forEach((f, i) => {
     const numFila = i + 2; // como se ve en Excel
-    const [alias, razon, email, recibe, notas] = f;
+    const [alias, razon, email, recibe, notas, indiv] = f;
     if (!alias && !razon && !email && !recibe) return; // fila vacía
     const aliases = String(alias ?? '').split(';').map((a) => a.trim()).filter(Boolean);
     const razones = String(razon ?? '').split(';').map((r) => r.trim()).filter(Boolean);
@@ -94,6 +94,8 @@ export function leerMaestro(tabla) {
       email: correo,
       recibe: rec,
       notas: notas ? String(notas) : '',
+      // Columna F del maestro: SI = el cliente recibe una nómina por trabajador, no la conjunta.
+      individuales: /^(si|sí|s|x)$/i.test(String(indiv ?? '').trim()),
     };
     if (aliases.length === 0) errores.push({ fila: numFila, detalle: 'Fila sin alias de nómina' });
     if (!RECIBE_VALIDOS.includes(rec)) {
@@ -103,6 +105,11 @@ export function leerMaestro(tabla) {
     filas.push(fila);
   });
   return { filas, errores };
+}
+
+/** Subcarpeta (dentro de la carpeta del mes) donde van las nóminas individuales de un cliente. */
+export function carpetaIndividuales(fila) {
+  return fila.id.toUpperCase();
 }
 
 function emailValido(email) {
@@ -251,10 +258,24 @@ export function prechequeo(e) {
     const sueltasFila = nominaDeFila.get(r.id) ?? [];
     let nominas = [];
     let incidencia = null;
+    let faltaDividir = null;
     if (sub) {
       nominas = [...sub.ficheros].sort(porNombre);
       avisos.push(`Nóminas individuales de la subcarpeta "${sub.carpeta}" (${nominas.length})` +
         (sueltasFila.length ? '; la nómina conjunta de la raíz no se adjunta' : ''));
+      // Si la conjunta se ha vuelto a guardar después de dividirla, las individuales están viejas.
+      const fechaConjunta = Math.max(...sueltasFila.map((f) => f.modificado ?? 0), 0);
+      const fechaIndiv = Math.min(...nominas.map((f) => f.modificado ?? Infinity));
+      if (fechaConjunta && fechaIndiv !== Infinity && fechaConjunta > fechaIndiv) {
+        nominas = [];
+        faltaDividir = 'volver a dividir la nómina (la conjunta es más reciente que las individuales)';
+      }
+    } else if (r.individuales) {
+      // Cliente de nóminas individuales sin dividir todavía: la conjunta NUNCA se adjunta.
+      if (sueltasFila.length === 1) faltaDividir = 'dividir la nómina en individuales';
+      else if (sueltasFila.length > 1) {
+        incidencia = `Hay ${sueltasFila.length} PDF de nómina candidatos: ` + sueltasFila.map((f) => f.nombre).join(' · ');
+      }
     } else if (sueltasFila.length > 1) {
       incidencia = `Hay ${sueltasFila.length} PDF de nómina candidatos: ` +
         sueltasFila.map((f) => f.nombre).join(' · ');
@@ -270,7 +291,13 @@ export function prechequeo(e) {
       : asuntoBase;
     if (compartido) avisos.push('Correo compartido con otro cliente: el asunto lleva el nombre de la empresa');
 
-    const base = { fila: r.fila, id: r.id, email: r.email, recibe: r.recibe, asunto, notas: r.notas };
+    const base = {
+      fila: r.fila, id: r.id, email: r.email, recibe: r.recibe, asunto, notas: r.notas,
+      individuales: r.individuales,
+      // Lo que la app tiene que dividir antes de poder enviar a este cliente.
+      porDividir: faltaDividir && sueltasFila.length === 1
+        ? { origen: sueltasFila[0].ruta, destino: carpetaIndividuales(r) } : null,
+    };
     const tieneAlgo = nominas.length + sueltasFila.length + rnt.length + rlc.length > 0;
 
     if (r.recibe === 'NADA') {
@@ -299,7 +326,7 @@ export function prechequeo(e) {
       return { ...base, estado: ESTADO.INCIDENCIA, adjuntos: [], cuenta: cuenta(nominas, rnt, rlc), faltan, avisos: [incidencia, ...avisos] };
     }
 
-    if (quiereNomina && nominas.length === 0) faltan.push('nómina');
+    if (quiereNomina && nominas.length === 0) faltan.push(faltaDividir ?? 'nómina');
     if (quiereSS && rnt.length === 0) faltan.push('RNT');
     if (quiereSS && rlc.length === 0) faltan.push('RLC');
     if (quiereSS && rnt.length && rlc.length && rnt.length !== rlc.length) {
