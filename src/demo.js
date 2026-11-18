@@ -18,6 +18,12 @@ export const demo = {
     ['gimnasio vega', 'GIMNASIO VEGA SL', 'info@gimnasiovega.example', 'AMBAS', null, null],
     ['libreria faro', null, null, 'NOMINA', 'Falta el correo', null],
     ['asesoria propia', 'ASESORIA PROPIA SL', null, 'NADA', 'No se envía nada', null],
+    ['asociacion barrio', null, null, 'NOMINA', 'Cada nómina va al correo de su trabajadora', 'TRABAJADOR'],
+  ],
+  // Hoja Trabajadores: a qué correo va la nómina de cada trabajador (solo empresas marcadas TRABAJADOR).
+  trabajadoresMaestro: [
+    ['EMPRESA', 'NOMBRE EN LA NÓMINA', 'EMAIL'],
+    ['asociacion barrio', 'LUCIA PRADO NAVA', 'lucia.prado@correo.example'],
   ],
   nominas: [
     pdf('panaderia luna nom 11.pdf', 128), pdf('talleres sol nom 11.pdf', 152), pdf('ferreteria mar nom 11.pdf', 104),
@@ -28,6 +34,8 @@ export const demo = {
     pdf('ESTUDIO RIO/NOA REY CANO nom 11.pdf', 106, 200),
     pdf('gimnasio vega nom 11.pdf', 115), pdf('libreria faro nom 11.pdf', 103), pdf('asesoria propia nom 11.pdf', 111),
     pdf('floristeria valle nom 11.pdf', 109),
+    pdf('asociacion barrio nom 11.pdf', 113),
+    pdf('ASOCIACION BARRIO/LUCIA PRADO NAVA nom 11.pdf', 104, 200), pdf('ASOCIACION BARRIO/IRENE COSTA BLANCO nom 11.pdf', 104, 200),
     { ruta: 'panaderia luna costes 11.xls', bytes: 50 * KB }, { ruta: 'talleres sol costes 11.xls', bytes: 52 * KB },
   ],
   rnt: [

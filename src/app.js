@@ -7,6 +7,7 @@ import { demo } from './demo.js';
 const estado = {
   mes: demo.mes, anio: demo.anio,
   tabla: demo.maestro.map((f) => [...f]),
+  tablaTrab: demo.trabajadoresMaestro.map((f) => [...f]),
   nominas: [...demo.nominas], rnt: [...demo.rnt], rlc: [...demo.rlc],
   enviados: [...demo.enviados],
   excluidos: new Set(),
@@ -22,7 +23,7 @@ const emailOk = (e) => /^[^\s@;,]+@[^\s@;,]+\.[^\s@;,]+$/.test(e);
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
 function calcular() {
-  const { filas, errores } = leerMaestro(estado.tabla);
+  const { filas, errores } = leerMaestro(estado.tabla, estado.tablaTrab);
   const r = prechequeo({
     mes: estado.mes, anio: estado.anio, maestro: filas,
     nominas: estado.nominas, rnt: estado.rnt, rlc: estado.rlc,
@@ -100,7 +101,10 @@ function dibujar() {
   const pendientes = r.pendientes.filter((c) => !c.porDividir);
   const segurosSueltos = r.nuevas.seguros;
   const nNuevas = r.nuevas.nominas.length + (r.nuevas.nominas.length ? 0 : segurosSueltos.length);
-  const bloqueos = nNuevas + porDividir.length + r.incidencias.length + erroresMaestro.length;
+  const trabNuevos = r.nuevas.trabajadores;
+  const idsTrabNuevos = new Set(trabNuevos.map((t) => `${t.empresa} · ${t.nombre}`));
+  const incidencias = r.incidencias.filter((c) => !idsTrabNuevos.has(c.id));
+  const bloqueos = nNuevas + trabNuevos.length + porDividir.length + incidencias.length + erroresMaestro.length;
   const ss = r.periodoSS;
 
   const resumen = [
@@ -118,14 +122,24 @@ function dibujar() {
       ${!r.nuevas.nominas.length ? segurosSueltos.map((s) => `<p class="nota">Seguros sociales sin cliente: <strong>${esc(s.razon)}</strong> (${s.rnt.length} RNT, ${s.rlc.length} RLC). Falta su nómina o su fila en el maestro.</p>`).join('') : ''}
     </div>`;
   }
+  if (trabNuevos.length) {
+    antes += `<div class="bloque"><h3>Trabajadores nuevos</h3>
+      <p class="ayuda">En estas empresas cada nómina va al correo de su trabajador. Falta el correo de alguien; su nómina no se envía a nadie hasta que lo indiques.</p>
+      ${trabNuevos.map((t, i) => `<form class="nueva" data-accion="alta-trabajador" data-i="${i}" novalidate>
+        <p class="quien"><strong>${esc(t.nombre)}</strong> <span class="tenue">de</span> ${esc(t.empresa)} · <code>${esc(t.ruta)}</code></p>
+        <div class="campos"><label for="temail-${i}">Correo del trabajador<input id="temail-${i}" name="email" type="email" placeholder="nombre@correo.es" autocomplete="off" required></label></div>
+        ${estado.errores[`trab-${i}`] ? `<p class="error" role="alert">${esc(estado.errores[`trab-${i}`])}</p>` : ''}
+        <div class="botones"><button type="submit" class="b prim">Guardar correo</button></div></form>`).join('')}
+    </div>`;
+  }
   if (porDividir.length) {
     antes += `<div class="bloque"><h3>Nóminas por dividir</h3>
       <p class="ayuda">Estos clientes reciben una nómina por trabajador. Hay que dividir el PDF conjunto antes de enviar.</p>
       <ul class="lista">${porDividir.map((c) => filaCliente(c, { extra: `<button class="b prim" data-accion="dividir" data-id="${esc(c.id)}">Dividir nómina</button>` })).join('')}</ul></div>`;
   }
-  if (r.incidencias.length || erroresMaestro.length) {
+  if (incidencias.length || erroresMaestro.length) {
     antes += `<div class="bloque"><h3>Incidencias</h3>
-      <ul class="lista">${r.incidencias.map((c) => filaCliente(c, { extra: `<span class="pil mal">${esc(c.avisos[0] ?? 'Revisar')}</span>` })).join('')}</ul>
+      <ul class="lista">${incidencias.map((c) => filaCliente(c, { extra: `<span class="pil mal">${esc(c.avisos[0] ?? 'Revisar')}</span>` })).join('')}</ul>
       ${erroresMaestro.map((e) => `<p class="nota">Maestro, fila ${e.fila}: ${esc(e.detalle)}</p>`).join('')}</div>`;
   }
   if (r.nuevas.sinRenombrar.length || r.nuevas.otros.length || r.ambiguos.length) {
@@ -215,6 +229,21 @@ document.addEventListener('click', (ev) => {
 });
 
 document.addEventListener('submit', (ev) => {
+  const ft = ev.target.closest('form[data-accion="alta-trabajador"]');
+  if (ft) {
+    ev.preventDefault();
+    const { r } = calcular();
+    const t = r.nuevas.trabajadores[Number(ft.dataset.i)];
+    const email = String(new FormData(ft).get('email')).trim();
+    estado.errores = {};
+    if (!emailOk(email)) estado.errores[`trab-${ft.dataset.i}`] = 'Escribe un correo válido, por ejemplo nombre@correo.es.';
+    else {
+      estado.tablaTrab.push([t.empresa, t.nombre, email]);
+      estado.aviso = `Correo de ${t.nombre} guardado en la hoja Trabajadores.`;
+    }
+    dibujar();
+    return;
+  }
   const f = ev.target.closest('form[data-accion="alta"]');
   if (!f) return;
   ev.preventDefault();

@@ -62,6 +62,13 @@ empresas o si dos trabajadores darían el mismo nombre de fichero. Mientras no e
 PENDIENTE y el PDF conjunto no se adjunta nunca. Si el conjunto se vuelve a guardar después de dividirlo,
 hay que dividir otra vez.
 
+## Nóminas enviadas a cada trabajador
+
+Con `TRABAJADOR` en la columna F (y `RECIBE` = `NOMINA`), el PDF se divide igual, pero cada nómina se envía al
+correo de su trabajador, que se toma de la hoja `Trabajadores` del maestro (empresa, nombre tal como sale en el
+fichero de la nómina, correo). El nombre tiene que coincidir exactamente; si aparece un trabajador que no está
+en la hoja, su nómina no se envía a nadie y la pantalla pide su correo.
+
 ## Pruebas
 
 ```

@@ -75,9 +75,18 @@ export function carpetasDelMes(mes, anio) {
  * Convierte las filas del Excel maestro (primera fila = cabecera) en filas limpias.
  * Devuelve { filas, errores }. Un error de maestro bloquea esa fila, no el resto.
  */
-export function leerMaestro(tabla) {
+export function leerMaestro(tabla, tablaTrabajadores = []) {
   const filas = [];
   const errores = [];
+  // Hoja "Trabajadores": EMPRESA (alias) | NOMBRE EN LA NÓMINA | EMAIL
+  const trabajadores = tablaTrabajadores.slice(1)
+    .filter((t) => t && (t[0] || t[1] || t[2]))
+    .map((t, i) => ({
+      fila: i + 2,
+      empresa: palabras(t[0]).join(' '),
+      nombre: String(t[1] ?? '').trim(),
+      email: String(t[2] ?? '').trim(),
+    }));
   tabla.slice(1).forEach((f, i) => {
     const numFila = i + 2; // como se ve en Excel
     const [alias, razon, email, recibe, notas, indiv] = f;
@@ -94,17 +103,38 @@ export function leerMaestro(tabla) {
       email: correo,
       recibe: rec,
       notas: notas ? String(notas) : '',
-      // Columna F del maestro: SI = el cliente recibe una nómina por trabajador, no la conjunta.
-      individuales: /^(si|sí|s|x)$/i.test(String(indiv ?? '').trim()),
+      // Columna F del maestro:
+      //   vacío       → CONJUNTO: un PDF con todas las nóminas, al correo de la empresa
+      //   SI          → INDIVIDUAL: una nómina por trabajador, todas al correo de la empresa
+      //   TRABAJADOR  → TRABAJADOR: una nómina por trabajador, cada una al correo de ese trabajador
+      envio: /^trabajador(es|a|as)?$/i.test(String(indiv ?? '').trim()) ? 'TRABAJADOR'
+        : /^(si|sí|s|x)$/i.test(String(indiv ?? '').trim()) ? 'INDIVIDUAL' : 'CONJUNTO',
+      trabajadores: trabajadores.filter((t) => aliases.some((al) => palabras(al).join(' ') === t.empresa)),
     };
+    fila.individuales = fila.envio !== 'CONJUNTO';
     if (aliases.length === 0) errores.push({ fila: numFila, detalle: 'Fila sin alias de nómina' });
-    if (!RECIBE_VALIDOS.includes(rec)) {
+    if (fila.envio === 'TRABAJADOR' && (rec === 'AMBAS' || rec === 'SS')) {
+      errores.push({ fila: numFila, detalle: 'Envío a cada trabajador: RECIBE tiene que ser NOMINA (los seguros sociales no van a los trabajadores)' });
+      fila.recibe = 'INVALIDO';
+    } else if (!RECIBE_VALIDOS.includes(rec)) {
       errores.push({ fila: numFila, detalle: `RECIBE no válido: "${recibe ?? ''}"` });
       fila.recibe = 'INVALIDO';
     }
     filas.push(fila);
   });
+  for (const t of trabajadores) {
+    if (!filas.some((f) => f.trabajadores.includes(t))) {
+      errores.push({ fila: t.fila, detalle: `Hoja Trabajadores: la empresa de "${t.nombre}" no es un alias del maestro` });
+    }
+  }
   return { filas, errores };
+}
+
+/** "ANA GARCIA LOPEZ nom 10.pdf" → "ana garcia lopez": la clave con la que se busca al trabajador. */
+export function claveTrabajador(nombreFichero) {
+  const w = palabras(sinExtension(nombreFichero));
+  const corte = w.findIndex((x) => x === 'nom' || x === 'nomina');
+  return (corte > 0 ? w.slice(0, corte) : w).join(' ');
 }
 
 /** Subcarpeta (dentro de la carpeta del mes) donde van las nóminas individuales de un cliente. */
@@ -248,7 +278,9 @@ export function prechequeo(e) {
 
   // ---- 4. Estado de cada fila ------------------------------------------------------
   const porNombre = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
-  const clientes = maestro.map((r) => {
+  const trabajadoresNuevos = [];
+  const clientes = maestro.flatMap((r) => {
+    if (r.envio === 'TRABAJADOR' && r.recibe === 'NOMINA') return porTrabajador(r);
     const avisos = [];
     const faltan = [];
     const quiereNomina = r.recibe === 'AMBAS' || r.recibe === 'NOMINA';
@@ -351,6 +383,69 @@ export function prechequeo(e) {
     };
   });
 
+  // ---- 4 bis. Empresas cuyas nóminas van directamente a cada trabajador ----------------
+  function porTrabajador(r) {
+    const sub = subcarpetaDeFila.get(r.id);
+    const sueltasFila = nominaDeFila.get(r.id) ?? [];
+    const comun = { fila: r.fila, recibe: 'NOMINA', notas: r.notas, individuales: true, empresa: r.id, porDividir: null };
+    const asunto = `NOMINA ${MESES[mes - 1]} ${anio}`;
+    const fechaConjunta = Math.max(...sueltasFila.map((f) => f.modificado ?? 0), 0);
+    const fechaIndiv = sub ? Math.min(...sub.ficheros.map((f) => f.modificado ?? Infinity)) : Infinity;
+    const vieja = sub && fechaConjunta && fechaIndiv !== Infinity && fechaConjunta > fechaIndiv;
+
+    if (!sub || vieja) {
+      // Aún sin dividir: una sola línea para la empresa.
+      const falta = sueltasFila.length === 0 ? 'nómina'
+        : vieja ? 'volver a dividir la nómina (la conjunta es más reciente que las individuales)'
+          : 'dividir la nómina en individuales';
+      const varias = sueltasFila.length > 1;
+      return [{
+        ...comun, id: r.id, email: '', asunto,
+        estado: varias ? ESTADO.INCIDENCIA : ESTADO.PENDIENTE,
+        adjuntos: [], cuenta: cuenta([], [], []), bytes: 0,
+        faltan: varias ? [] : [falta],
+        avisos: varias ? [`Hay ${sueltasFila.length} PDF de nómina candidatos`] : ['Cada nómina se envía al correo de su trabajador'],
+        porDividir: sueltasFila.length === 1 ? { origen: sueltasFila[0].ruta, destino: carpetaIndividuales(r) } : null,
+      }];
+    }
+
+    const entradas = [];
+    const usados = new Set();
+    for (const f of [...sub.ficheros].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))) {
+      const clave = claveTrabajador(f.nombre);
+      const quienes = r.trabajadores.filter((t) => palabras(t.nombre).join(' ') === clave);
+      const t = quienes.length === 1 ? quienes[0] : null;
+      const nombre = t ? t.nombre : sinExtension(f.nombre).replace(/\s+nom(ina)?\s+\d{1,2}$/i, '');
+      const id = `${r.id} · ${nombre}`;
+      const base = { ...comun, id, email: t ? t.email : '', asunto, cuenta: cuenta([f], [], []), bytes: f.bytes ?? 0, faltan: [] };
+      const adjunto = { tipo: 'nomina', carpeta: 'Nóminas', ruta: f.ruta, bytes: f.bytes ?? 0 };
+      if (t) usados.add(t);
+      if (!t) {
+        if (quienes.length === 0) trabajadoresNuevos.push({ empresa: r.id, nombre, ruta: f.ruta });
+        entradas.push({ ...base, estado: ESTADO.INCIDENCIA, adjuntos: [],
+          avisos: [quienes.length ? 'Trabajador repetido en la hoja Trabajadores' : 'Trabajador nuevo: falta indicar su correo'] });
+      } else if (!emailValido(t.email)) {
+        entradas.push({ ...base, estado: ESTADO.INCIDENCIA, adjuntos: [],
+          avisos: [t.email ? `Correo no válido: "${t.email}"` : 'Sin correo en la hoja Trabajadores'] });
+      } else if (yaEnviados.has(palabras(id).join(' ')) || enviadosOutlook.some((c) =>
+        c.para === t.email.toLowerCase() && c.asunto === palabras(asunto).join(' '))) {
+        entradas.push({ ...base, estado: ESTADO.YA_ENVIADO, adjuntos: [], avisos: [] });
+      } else {
+        entradas.push({ ...base, estado: ESTADO.LISTO, adjuntos: [adjunto], avisos: ['Se envía directamente al trabajador'] });
+      }
+    }
+    for (const t of r.trabajadores) {
+      if (usados.has(t)) continue;
+      entradas.push({ ...comun, id: `${r.id} · ${t.nombre}`, email: t.email, asunto, estado: ESTADO.PENDIENTE,
+        adjuntos: [], cuenta: cuenta([], [], []), bytes: 0, faltan: ['nómina'],
+        avisos: ['Está en la hoja Trabajadores pero este mes no tiene nómina'] });
+    }
+    if ((rntDeFila.get(r.id) ?? []).length || (rlcDeFila.get(r.id) ?? []).length) {
+      entradas[0]?.avisos.push('La empresa tiene RNT/RLC este mes: no se envían a los trabajadores');
+    }
+    return entradas;
+  }
+
   // ---- 5. Comprobación final: ningún fichero puede ir a dos correos ------------------
   const visto = new Map();
   for (const c of clientes) {
@@ -361,7 +456,7 @@ export function prechequeo(e) {
     }
   }
 
-  const nuevas = candidatosNuevos(huerfanos);
+  const nuevas = { ...candidatosNuevos(huerfanos), trabajadores: trabajadoresNuevos };
   const de = (estado) => clientes.filter((c) => c.estado === estado);
   return {
     mes, anio, asuntoBase,
