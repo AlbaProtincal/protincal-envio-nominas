@@ -1,0 +1,10 @@
+# En este repositorio va SOLO código. Nunca datos de clientes.
+datos/
+datos-reales/
+*.xlsx
+*.xls
+*.pdf
+*.tsv
+*.csv
+node_modules/
+.env

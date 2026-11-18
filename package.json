@@ -1,0 +1,10 @@
+{
+  "name": "protincal-envio-nominas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Envío mensual de nóminas + RNT + RLC a los clientes de PROTINCAL",
+  "scripts": {
+    "test": "node --test"
+  }
+}
