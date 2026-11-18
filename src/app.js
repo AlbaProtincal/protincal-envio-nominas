@@ -33,6 +33,8 @@ function calcular() {
 }
 
 function textoCorreo(c) {
+  // Nómina enviada directamente al trabajador.
+  if (c.empresa) return 'Buenos días, se adjunta la nómina del mes en curso.';
   const que = c.recibe === 'AMBAS' ? 'las nóminas y los seguros sociales' : c.recibe === 'SS' ? 'los seguros sociales' : 'las nóminas';
   return `Buenos días,\n\nAdjunto ${que} del mes en curso.\n\nMuchas gracias, un saludo.`;
 }
@@ -156,7 +158,7 @@ function dibujar() {
     listos = `<div class="confirma">
       <h3>Vas a enviar ${plural(seleccion.length, 'correo', 'correos')}</h3>
       <ol class="repaso">${seleccion.map((c) => `<li><span class="alias">${esc(c.id)}</span><span class="correo">${esc(c.email)}</span><span class="tenue">${esc(c.asunto)} · ${plural(c.adjuntos.length, 'adjunto', 'adjuntos')} · ${kb(c.bytes)}</span></li>`).join('')}</ol>
-      <p class="eti">Texto del correo</p><pre class="cuerpo">${esc(textoCorreo(seleccion[0]))}</pre>
+      ${[...new Set(seleccion.map(textoCorreo))].map((t) => `<p class="eti">Texto del correo${seleccion.some((c) => c.empresa) && seleccion.some((c) => !c.empresa) ? (t.startsWith('Buenos días, se adjunta') ? ' a trabajadores' : ' a empresas') : ''}</p><pre class="cuerpo">${esc(t)}</pre>`).join('')}
       <p class="tenue">Total: ${kb(total)}. Tras enviar se comprueba en Enviados que cada correo ha salido con sus adjuntos.</p>
       <div class="botones"><button class="b prim" data-accion="enviar">Enviar ${plural(seleccion.length, 'correo', 'correos')}</button>
       <button class="b" data-accion="cancelar">Volver</button></div></div>`;
