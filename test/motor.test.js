@@ -256,7 +256,8 @@ test('texto del correo según lo que se adjunta', () => {
   assert.equal(t(3, true), 'Buenos días, Adjunto las nóminas y seguros sociales del mes en curso.');
   assert.equal(t(1, true), 'Buenos días, Adjunto la nómina y seguros sociales del mes en curso.');
   assert.equal(t(0, true), 'Buenos días, Adjunto los seguros sociales del mes en curso.');
-  assert.equal(t(1, false, true), 'Buenos días, se adjunta la nómina del mes en curso.');
+  assert.equal(t(1, false, true), 'Buenos días, Se adjunta la nómina del mes en curso.');
+  assert.equal(textoCorreo({ nNominas: 2, tieneSS: true }), 'Buenos días,\nAdjunto las nóminas y seguros sociales del mes en curso.');
 });
 
 test('un PDF conjunto con varias nóminas dentro cuenta como varias nóminas', () => {
@@ -269,8 +270,8 @@ test('un PDF conjunto con varias nóminas dentro cuenta como varias nóminas', (
 
 test('cuerpo del correo: texto, firma, logo incrustado y aviso legal; el texto se escapa', async () => {
   const { cuerpoHtml, CID_LOGO } = await import('../src/correo.js');
-  const html = cuerpoHtml('Buenos días,\n\nAdjunto la nómina <del mes>.');
-  assert.match(html, /<p[^>]*>Buenos días,<\/p><p[^>]*>Adjunto la nómina &lt;del mes&gt;\.<\/p>/);
+  const html = cuerpoHtml('Buenos días,\nAdjunto la nómina <del mes>.');
+  assert.match(html, /<p[^>]*>Buenos días,<br>Adjunto la nómina &lt;del mes&gt;\.<\/p>/);
   assert.ok(html.includes('Muchas gracias, un saludo.<br>Alba Jurado - Protincal Asesores.'));
   assert.ok(html.includes(`src="cid:${CID_LOGO}"`));
   assert.ok(html.includes('gestion@protincal.es'));

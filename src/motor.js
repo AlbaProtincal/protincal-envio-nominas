@@ -58,11 +58,12 @@ function contieneSecuencia(pajar, aguja) {
  * @param {boolean} aTrabajador  Va directamente al trabajador, no a la empresa
  */
 export function textoCorreo({ nNominas, tieneSS, aTrabajador = false }) {
-  if (aTrabajador) return 'Buenos días, se adjunta la nómina del mes en curso.';
+  // "Buenos días," en una línea y el resto en la siguiente, sin línea en blanco entre medias.
+  if (aTrabajador) return 'Buenos días,\nSe adjunta la nómina del mes en curso.';
   const nominas = nNominas > 1 ? 'las nóminas' : nNominas === 1 ? 'la nómina' : '';
   const que = nominas && tieneSS ? `${nominas} y seguros sociales`
     : nominas || 'los seguros sociales';
-  return `Buenos días,\n\nAdjunto ${que} del mes en curso.`;
+  return `Buenos días,\nAdjunto ${que} del mes en curso.`;
 }
 
 /** Periodo de seguros sociales = mes de la nómina − 1 (enero → diciembre del año anterior). */
