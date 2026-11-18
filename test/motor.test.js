@@ -266,3 +266,13 @@ test('un PDF conjunto con varias nóminas dentro cuenta como varias nóminas', (
   assert.match(una.listos[0].texto, /Adjunto la nómina del/);
   assert.match(varias.listos[0].texto, /Adjunto las nóminas del/);
 });
+
+test('cuerpo del correo: texto, firma, logo incrustado y aviso legal; el texto se escapa', async () => {
+  const { cuerpoHtml, CID_LOGO } = await import('../src/correo.js');
+  const html = cuerpoHtml('Buenos días,\n\nAdjunto la nómina <del mes>.');
+  assert.match(html, /<p[^>]*>Buenos días,<\/p><p[^>]*>Adjunto la nómina &lt;del mes&gt;\.<\/p>/);
+  assert.ok(html.includes('Muchas gracias, un saludo.<br>Alba Jurado - Protincal Asesores.'));
+  assert.ok(html.includes(`src="cid:${CID_LOGO}"`));
+  assert.ok(html.includes('gestion@protincal.es'));
+  assert.equal((html.match(/Muchas gracias/g) ?? []).length, 1);
+});

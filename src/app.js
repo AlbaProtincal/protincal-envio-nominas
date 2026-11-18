@@ -3,6 +3,7 @@
 // se conectan cuando la app esté registrada en Microsoft 365.
 import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js';
 import { demo } from './demo.js';
+import { cuerpoHtml } from './correo.js';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -154,7 +155,8 @@ function dibujar() {
     listos = `<div class="confirma">
       <h3>Vas a enviar ${plural(seleccion.length, 'correo', 'correos')}</h3>
       <ol class="repaso">${seleccion.map((c) => `<li><span class="alias">${esc(c.id)}</span><span class="correo">${esc(c.email)}</span><span class="tenue">${esc(c.asunto)} · ${plural(c.adjuntos.length, 'adjunto', 'adjuntos')} · ${kb(c.bytes)}</span></li>`).join('')}</ol>
-      ${[...new Set(seleccion.map(textoCorreo))].map((t) => `<p class="eti">Texto del correo${seleccion.some((c) => c.empresa) && seleccion.some((c) => !c.empresa) ? (t.startsWith('Buenos días, se adjunta') ? ' a trabajadores' : '') : ''} <span class="tenue">(${plural(seleccion.filter((c) => textoCorreo(c) === t).length, 'correo', 'correos')})</span></p><pre class="cuerpo">${esc(t)}</pre>`).join('')}
+      ${[...new Set(seleccion.map(textoCorreo))].map((t) => `<p class="eti">Así llega el correo <span class="tenue">(${plural(seleccion.filter((c) => textoCorreo(c) === t).length, 'correo', 'correos')})</span></p>
+        <div class="vista">${cuerpoHtml(t, 'assets/logo-firma.jpg')}</div>`).join('')}
       <p class="tenue">Total: ${kb(total)}. Tras enviar se comprueba en Enviados que cada correo ha salido con sus adjuntos.</p>
       <div class="botones"><button class="b prim" data-accion="enviar">Enviar ${plural(seleccion.length, 'correo', 'correos')}</button>
       <button class="b" data-accion="cancelar">Volver</button></div></div>`;
