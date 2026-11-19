@@ -98,15 +98,23 @@ export async function descargar(fichero) {
   return new Uint8Array(await r.arrayBuffer());
 }
 
-/** Correos de Elementos enviados desde una fecha: destinatario y asunto de cada uno. */
-export async function enviadosDesde(fechaIso, maximo = 2000) {
+/**
+ * Correos enviados por el usuario desde una fecha, estén en la carpeta que estén
+ * (en PROTINCAL los enviados se archivan en carpetas por cliente): destinatarios y asunto.
+ */
+export async function enviadosDesde(fechaIso, maximo = 5000) {
+  const yo = String(cuenta?.username ?? '').toLowerCase();
+  const filtro = `sentDateTime ge ${fechaIso} and isDraft eq false` +
+    (yo ? ` and from/emailAddress/address eq '${yo.replace(/'/g, "''")}'` : '');
   const salida = [];
-  let url = `/me/mailFolders/sentitems/messages?$filter=${encodeURIComponent(`sentDateTime ge ${fechaIso}`)}` +
-    '&$orderby=sentDateTime%20desc&$select=subject,toRecipients,sentDateTime&$top=100';
-  while (url && salida.length < maximo) {
+  let leidos = 0;
+  let url = `/me/messages?$filter=${encodeURIComponent(filtro)}` +
+    '&$select=subject,toRecipients,ccRecipients,bccRecipients,sentDateTime&$top=100';
+  while (url && leidos < maximo) {
     const pag = await pedir(url);
     for (const m of pag.value) {
-      for (const d of m.toRecipients ?? []) {
+      leidos += 1;
+      for (const d of [...(m.toRecipients ?? []), ...(m.ccRecipients ?? []), ...(m.bccRecipients ?? [])]) {
         salida.push({ para: d.emailAddress?.address ?? '', asunto: m.subject ?? '', cuando: m.sentDateTime });
       }
     }
