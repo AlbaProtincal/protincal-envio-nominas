@@ -49,9 +49,12 @@ export async function cargarMes(mes, anio, avisar = () => {}) {
   avisar('Buscando la carpeta de PROTINCAL LABORAL…');
   const base = await graph.carpetaBase();
 
+  const carpetaSS = c.rnt.replace(/\/RNT$/, '');
   avisar(`Leyendo ${c.nominas}…`);
-  const raiz = await graph.listar(base, c.nominas);
-  if (!raiz) return { ok: false, motivo: `No existe la carpeta ${c.nominas}` };
+  const [raizNominas, raizSS] = await Promise.all([graph.listar(base, c.nominas), graph.listar(base, carpetaSS)]);
+  // Sin nóminas pero con seguros sociales: se abre igual, para poder dividir los seguros sociales.
+  if (!raizNominas && !raizSS) return { ok: false, motivo: `No existe la carpeta ${c.nominas}` };
+  const raiz = raizNominas ?? [];
 
   const nominas = raiz.filter((f) => !f.esCarpeta).map((f) => aFichero(f));
   for (const carpeta of raiz.filter((f) => f.esCarpeta)) {
@@ -64,6 +67,12 @@ export async function cargarMes(mes, anio, avisar = () => {}) {
   const [rntBruto, rlcBruto] = await Promise.all([graph.listar(base, c.rnt), graph.listar(base, c.rlc)]);
   const rnt = (rntBruto ?? []).filter((f) => !f.esCarpeta).map((f) => aFichero(f));
   const rlc = (rlcBruto ?? []).filter((f) => !f.esCarpeta).map((f) => aFichero(f));
+  // PDF conjuntos sin dividir: pueden estar en la carpeta del mes o dentro de RLC/RNT.
+  const conjuntosSS = [
+    ...(raizSS ?? []).filter((f) => !f.esCarpeta && pareceConjuntoSS(f.nombre)).map((f) => ({ carpeta: carpetaSS.split('/').pop(), ruta: f.nombre })),
+    ...rlc.filter((f) => pareceConjuntoSS(f.nombre)).map((f) => ({ carpeta: 'RLC', ruta: f.nombre })),
+    ...rnt.filter((f) => pareceConjuntoSS(f.nombre)).map((f) => ({ carpeta: 'RNT', ruta: f.nombre })),
+  ];
 
   avisar('Leyendo el maestro…');
   // Se descarga el Excel y se lee aquí: no depende del servicio de Excel en línea.
@@ -94,10 +103,11 @@ export async function cargarMes(mes, anio, avisar = () => {}) {
   const enviadosOutlook = await graph.enviadosDesde(`${anio}-${dosCifras(mes)}-01T00:00:00Z`);
 
   return {
-    ok: true, mes, anio, tabla, tablaTrab, nominas, rnt, rlc, enviadosOutlook,
+    ok: true, mes, anio, tabla, tablaTrab, nominas, rnt, rlc, enviadosOutlook, conjuntosSS,
     avisos: [
-      ...(rntBruto ? [] : [`No existe la carpeta ${c.rnt}`]),
-      ...(rlcBruto ? [] : [`No existe la carpeta ${c.rlc}`]),
+      ...(raizNominas ? [] : [`Todavía no existe la carpeta ${c.nominas}: de momento solo se pueden dividir los seguros sociales.`]),
+      ...(rntBruto || conjuntosSS.length ? [] : [`No existe la carpeta ${c.rnt}`]),
+      ...(rlcBruto || conjuntosSS.length ? [] : [`No existe la carpeta ${c.rlc}`]),
       ...(ilegibles.length ? [`No se han podido abrir ${ilegibles.length} PDF de nóminas para contar los trabajadores ` +
         `(se cuentan como una nómina, lo que afecta al texto del correo): ${ilegibles.join(', ')}`] : []),
     ],
@@ -111,10 +121,15 @@ export async function cargarMes(mes, anio, avisar = () => {}) {
 export async function prepararSS(mes, anio, avisar = () => {}) {
   const c = carpetasDelMes(mes, anio);
   const base = await graph.carpetaBase();
-  const carpetas = { RLC: c.rlc, RNT: c.rnt };
+  const carpetaSS = c.rnt.replace(/\/RNT$/, '');
+  const destino = { RLC: c.rlc, RNT: c.rnt };
   const conjuntos = [];
   const existentes = { RLC: new Set(), RNT: new Set() };
-  for (const [tipo, carpeta] of Object.entries(carpetas)) {
+  // Conjuntos sueltos en la carpeta del mes (el tipo se sabe al leerlos).
+  for (const f of ((await graph.listar(base, carpetaSS)) ?? []).filter((x) => !x.esCarpeta && pareceConjuntoSS(x.nombre))) {
+    conjuntos.push({ ...f, carpeta: carpetaSS, tipoCarpeta: null, clave: `${carpetaSS.split('/').pop()}/${f.nombre}` });
+  }
+  for (const [tipo, carpeta] of Object.entries(destino)) {
     const lista = (await graph.listar(base, carpeta)) ?? [];
     for (const f of lista.filter((x) => !x.esCarpeta)) {
       if (pareceConjuntoSS(f.nombre)) conjuntos.push({ ...f, carpeta, tipoCarpeta: tipo, clave: `${tipo}/${f.nombre}` });
@@ -133,8 +148,8 @@ export async function prepararSS(mes, anio, avisar = () => {}) {
   const plan = planSS(porFichero, periodoSeguros(mes, anio));
   for (const fx of plan.ficheros) {
     const origen = conjuntos.find((x) => x.clave === fx.origen);
-    fx.carpeta = origen.carpeta;
-    if (fx.tipo !== origen.tipoCarpeta) {
+    fx.carpeta = destino[fx.tipo];
+    if (origen.tipoCarpeta && fx.tipo !== origen.tipoCarpeta) {
       plan.ok = false;
       plan.errores.push(`${fx.origen} contiene ${fx.tipo} pero está en la carpeta ${origen.tipoCarpeta}`);
     }
@@ -147,15 +162,17 @@ export async function prepararSS(mes, anio, avisar = () => {}) {
     plan.errores.push('Algunos ficheros ya existen en la carpeta y otros no. Revisa la carpeta antes de dividir: ' +
       plan.ficheros.filter((f) => f.existe).map((f) => `${f.tipo}/${f.nombre}`).join(' · '));
   }
-  return { ok: true, mes, anio, base, conjuntos, bytes, plan, yaDivididos };
+  return { ok: true, mes, anio, base, carpetaSS, conjuntos, bytes, plan, yaDivididos };
 }
 
 /** Divide y guarda: sube un PDF por liquidación y mueve los conjuntos a la subcarpeta "Originales". */
 export async function ejecutarSS(prep, avisar = () => {}) {
-  const { base, plan, conjuntos, bytes, yaDivididos } = prep;
+  const { base, plan, conjuntos, bytes, yaDivididos, carpetaSS } = prep;
   if (!plan.ok) throw new Error('El plan tiene errores: no se divide nada');
   const subidos = [];
   if (!yaDivididos) {
+    // Las subcarpetas RLC y RNT pueden no existir todavía.
+    for (const tipo of new Set(plan.ficheros.map((f) => f.tipo))) await graph.asegurarCarpeta(base, carpetaSS, tipo);
     const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js');
     const salidas = await cortarSS(plan, bytes, { PDFDocument });
     for (const [i, f] of salidas.entries()) {

@@ -23,6 +23,7 @@ const estado = {
   avisosCarga: [],
   // División de los seguros sociales conjuntos: null | { prep } | { error }
   ss: null,
+  conjuntosSS: null, // en modo real, los PDF conjuntos encontrados al cargar el mes
   excluidos: new Set(),
   abiertos: new Set(),
   confirmando: false,
@@ -182,7 +183,7 @@ function dibujarContenido() {
   const idsTrabNuevos = new Set(trabNuevos.map((t) => `${t.empresa} · ${t.nombre}`));
   const incidencias = r.incidencias.filter((c) => !idsTrabNuevos.has(c.id));
   const bloqueos = nNuevas + trabNuevos.length + porDividir.length + incidencias.length + erroresMaestro.length +
-    (r.nuevas.sinRenombrar.length ? 1 : 0);
+    ((estado.conjuntosSS ?? r.nuevas.sinRenombrar).length ? 1 : 0);
   const ss = r.periodoSS;
 
   const resumen = [
@@ -193,7 +194,7 @@ function dibujarContenido() {
   ].map(([h, n, t, tono]) => `<a class="tile ${tono}" href="${h}"><span class="n">${n}</span><span class="t">${t}</span></a>`).join('');
 
   let antes = '';
-  const conjuntosSS = r.nuevas.sinRenombrar;
+  const conjuntosSS = estado.conjuntosSS ?? r.nuevas.sinRenombrar;
   if (conjuntosSS.length || estado.ss) {
     antes += `<div class="bloque"><h3>Seguros sociales sin dividir</h3>${bloqueSS(conjuntosSS)}</div>`;
   }
@@ -308,6 +309,7 @@ function bloquearCambios() {
 
 async function cargar(mes, anio, { probarAnterior = false } = {}) {
   estado.ss = null;
+  estado.conjuntosSS = null;
   estado.errorCarga = null; estado.avisosCarga = []; estado.aviso = null; estado.confirmando = false;
   estado.mes = mes; estado.anio = anio;
   estado.cargando = 'Conectando con Microsoft 365…';
@@ -328,6 +330,7 @@ async function cargar(mes, anio, { probarAnterior = false } = {}) {
       estado.tabla = d.tabla; estado.tablaTrab = d.tablaTrab;
       estado.nominas = d.nominas; estado.rnt = d.rnt; estado.rlc = d.rlc;
       estado.enviadosOutlook = d.enviadosOutlook;
+      estado.conjuntosSS = d.conjuntosSS;
       estado.avisosCarga.push(...d.avisos);
     }
     estado.enviados = []; estado.excluidos = new Set(); estado.abiertos = new Set();
