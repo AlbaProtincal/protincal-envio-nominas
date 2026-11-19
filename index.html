@@ -102,6 +102,10 @@ code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
 .repaso li .tenue { grid-column: 1 / -1; font-size: 13px; }
 .cuerpo { margin: 0; font: 400 14px/1.5 var(--texto); white-space: pre-wrap; background: var(--fondo); border-radius: 6px; padding: 12px; }
 .vista { background: #ffffff; color: #000000; border: 1px solid var(--linea); border-radius: 6px; padding: 16px; overflow-x: auto; }
+.sesion { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sesion select { font: 400 14px var(--texto); padding: 7px 8px; border: 1px solid var(--linea); border-radius: 6px; background: var(--papel); color: var(--tinta); }
+.oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.cargando { background: var(--papel); border: 1px solid var(--linea); border-radius: 8px; padding: 24px 16px; color: var(--tenue); }
 .plegada summary { cursor: pointer; font: 600 16px var(--titulo); }
 .pie { color: var(--tenue); font-size: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
 @media (max-width: 560px) {
@@ -116,6 +120,7 @@ code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
 </head>
 <body>
 <main id="app"><p class="vacio">Cargando…</p></main>
+<script src="vendor/msal-browser.min.js"></script>
 <script type="module" src="src/app.js"></script>
 </body>
 </html>

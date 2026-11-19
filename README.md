@@ -5,13 +5,19 @@ Aplicación interna de PROTINCAL para el envío mensual a cada cliente de su nó
 **En este repositorio va solo código. Nunca datos de clientes** (ni el maestro, ni PDF, ni listados de carpetas).
 Los documentos y el maestro viven en el OneDrive de PROTINCAL.
 
+## Dónde está
+
+Publicada en https://albaprotincal.github.io/protincal-envio-nominas/ (se actualiza sola al subir cambios a `main`).
+Sin iniciar sesión muestra una demostración con datos inventados. Con sesión de Microsoft 365 de PROTINCAL lee las
+carpetas reales. Las librerías de terceros están copiadas en `vendor/` para no depender de servidores externos.
+
 ## Estado
 
 | Pieza | Estado |
 |---|---|
 | Motor de emparejamiento y pre-chequeo (`src/motor.js`) | Hecho y probado |
 | División de nóminas en individuales (`src/dividir.js`) | Hecho y probado |
-| Lectura de carpetas y maestro desde OneDrive (Microsoft Graph) | Pendiente del registro de la app en Microsoft 365 |
+| Inicio de sesión con Microsoft y lectura de carpetas, maestro y Enviados (`src/graph.js`, `src/datos.js`) | Hecho, en solo lectura; pendiente de probar con la cuenta real |
 | Envío de correos y verificación en Enviados | Pendiente |
 | Pantalla del pre-chequeo (`index.html`, `src/app.js`) | Hecha con datos de demostración (`src/demo.js`) |
 | Alta de empresas nuevas desde la pantalla | Hecha en la demostración; falta escribir en el maestro real |

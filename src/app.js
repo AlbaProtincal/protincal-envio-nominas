@@ -4,6 +4,8 @@
 import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js';
 import { demo } from './demo.js';
 import { cuerpoHtml } from './correo.js';
+import * as graph from './graph.js';
+import { cargarMes } from './datos.js';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -11,6 +13,14 @@ const estado = {
   tablaTrab: demo.trabajadoresMaestro.map((f) => [...f]),
   nominas: [...demo.nominas], rnt: [...demo.rnt], rlc: [...demo.rlc],
   enviados: [...demo.enviados],
+  enviadosOutlook: [],
+  // 'demo' = datos inventados; 'real' = carpetas y correo de Microsoft 365, en solo lectura.
+  modo: 'demo',
+  usuario: null,
+  sesionDisponible: false,
+  cargando: null,
+  errorCarga: null,
+  avisosCarga: [],
   excluidos: new Set(),
   abiertos: new Set(),
   confirmando: false,
@@ -29,6 +39,7 @@ function calcular() {
     mes: estado.mes, anio: estado.anio, maestro: filas,
     nominas: estado.nominas, rnt: estado.rnt, rlc: estado.rlc,
     yaEnviados: estado.enviados.map((e) => e.id),
+    enviadosOutlook: estado.enviadosOutlook,
   });
   return { r, erroresMaestro: errores };
 }
@@ -93,7 +104,7 @@ function formularioNueva(n, i, seguros) {
   </form>`;
 }
 
-function dibujar() {
+function dibujarContenido() {
   const { r, erroresMaestro } = calcular();
   const seleccion = r.listos.filter((c) => !estado.excluidos.has(c.id));
   const porDividir = r.clientes.filter((c) => c.porDividir && c.estado === 'PENDIENTE');
@@ -168,13 +179,34 @@ function dibujar() {
       : '<p class="vacio">No hay ningún cliente listo para enviar.</p>';
   }
 
-  document.getElementById('app').innerHTML = `
+  const real = estado.modo === 'real';
+  const anios = [estado.anio - 1, estado.anio, estado.anio + 1];
+  const sesion = real
+    ? `<div class="sesion"><span class="tenue">${esc(estado.usuario?.correo ?? '')}</span>
+        <label class="oculto" for="sel-mes">Mes</label>
+        <select id="sel-mes">${MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === estado.mes ? 'selected' : ''}>${m[0]}${m.slice(1).toLowerCase()}</option>`).join('')}</select>
+        <label class="oculto" for="sel-anio">Año</label>
+        <select id="sel-anio">${anios.map((a) => `<option ${a === estado.anio ? 'selected' : ''}>${a}</option>`).join('')}</select>
+        <button class="b" data-accion="cargar">Cargar mes</button>
+        <button class="b" data-accion="salir">Cerrar sesión</button></div>`
+    : `<div class="sesion"><button class="b prim" data-accion="entrar" ${estado.sesionDisponible ? '' : 'disabled'}>Iniciar sesión con Microsoft</button></div>`;
+  const cabecera = `
     <header class="top">
       <div><p class="marca">PROTINCAL · Laboral</p><h1>Envío de nóminas</h1></div>
       <div class="periodo"><span class="mes">${MESES[estado.mes - 1]} ${estado.anio}</span>
         <span class="tenue">Seguros sociales de ${dosCifras(ss.mes)}/${ss.anio}</span></div>
     </header>
-    <p class="demo" role="note">Demostración con datos inventados. No lee tus carpetas ni envía ningún correo.</p>
+    ${sesion}
+    ${real
+      ? '<p class="demo" role="note">Versión de prueba en solo lectura: lee tus carpetas y tu correo, pero no envía, no divide y no modifica el maestro.</p>'
+      : '<p class="demo" role="note">Demostración con datos inventados. Inicia sesión para ver tus carpetas reales.</p>'}
+    ${estado.errorCarga ? `<p class="error" role="alert">${esc(estado.errorCarga)}</p>` : ''}
+    ${estado.avisosCarga.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}`;
+  if (estado.cargando) {
+    document.getElementById('app').innerHTML = `${cabecera}<p class="cargando" role="status">${esc(estado.cargando)}</p>`;
+    return;
+  }
+  document.getElementById('app').innerHTML = `${cabecera}
     ${estado.aviso ? `<p class="hecho" role="status">${esc(estado.aviso)}</p>` : ''}
     <nav class="tiles" aria-label="Resumen">${resumen}</nav>
     ${antes ? seccion('antes', 'Antes de enviar', bloqueos, antes, { tono: 'atencion' }) : ''}
@@ -190,6 +222,66 @@ function dibujar() {
     <footer class="pie">Carpetas: <code>${esc(r.carpetas.nominas)}</code> · <code>${esc(r.carpetas.rnt)}</code> · <code>${esc(r.carpetas.rlc)}</code></footer>`;
 }
 
+function dibujar() {
+  dibujarContenido();
+  bloquearCambios();
+}
+
+/** En modo real (solo lectura) se desactiva todo lo que enviaría o modificaría algo. */
+function bloquearCambios() {
+  if (estado.modo !== 'real') return;
+  const sel = '[data-accion="dividir"], [data-accion="enviar"], [data-accion="no-enviar"], form.nueva button, form.nueva input, form.nueva select';
+  document.querySelectorAll(sel).forEach((el) => { el.disabled = true; el.title = 'Desactivado en la versión de prueba'; });
+}
+
+async function cargar(mes, anio, { probarAnterior = false } = {}) {
+  estado.errorCarga = null; estado.avisosCarga = []; estado.aviso = null; estado.confirmando = false;
+  estado.mes = mes; estado.anio = anio;
+  estado.cargando = 'Conectando con Microsoft 365…';
+  dibujar();
+  try {
+    let d = await cargarMes(mes, anio, (t) => { estado.cargando = t; dibujar(); });
+    if (!d.ok && probarAnterior) {
+      // Si aún no existe la carpeta del mes en curso, se abre el mes anterior.
+      const ant = mes === 1 ? { mes: 12, anio: anio - 1 } : { mes: mes - 1, anio };
+      const motivo = d.motivo;
+      d = await cargarMes(ant.mes, ant.anio, (t) => { estado.cargando = t; dibujar(); });
+      if (d.ok) { estado.mes = ant.mes; estado.anio = ant.anio; estado.avisosCarga = [`${motivo}: se muestra el mes anterior.`]; }
+    }
+    if (!d.ok) {
+      estado.errorCarga = d.motivo;
+      estado.tabla = [demo.maestro[0]]; estado.tablaTrab = []; estado.nominas = []; estado.rnt = []; estado.rlc = [];
+    } else {
+      estado.tabla = d.tabla; estado.tablaTrab = d.tablaTrab;
+      estado.nominas = d.nominas; estado.rnt = d.rnt; estado.rlc = d.rlc;
+      estado.enviadosOutlook = d.enviadosOutlook;
+      estado.avisosCarga.push(...d.avisos);
+    }
+    estado.enviados = []; estado.excluidos = new Set(); estado.abiertos = new Set();
+  } catch (e) {
+    estado.errorCarga = `No se han podido leer los datos: ${e.message}`;
+  }
+  estado.cargando = null;
+  dibujar();
+}
+
+async function arrancar() {
+  dibujar();
+  try {
+    const usuario = await graph.iniciar();
+    estado.sesionDisponible = true;
+    if (usuario) {
+      estado.modo = 'real'; estado.usuario = usuario;
+      const hoy = new Date();
+      await cargar(hoy.getMonth() + 1, hoy.getFullYear(), { probarAnterior: true });
+      return;
+    }
+  } catch (e) {
+    estado.errorCarga = `Inicio de sesión no disponible: ${e.message}`;
+  }
+  dibujar();
+}
+
 function ahora() {
   const d = new Date();
   return `${dosCifras(d.getDate())}/${dosCifras(d.getMonth() + 1)}/${d.getFullYear()} ${dosCifras(d.getHours())}:${dosCifras(d.getMinutes())}`;
@@ -199,6 +291,14 @@ document.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-accion]');
   if (!el || el.tagName === 'FORM') return;
   const { accion, id } = el.dataset;
+  if (accion === 'entrar') { graph.entrar(); return; }
+  if (accion === 'salir') { graph.salir(); return; }
+  if (accion === 'cargar') {
+    cargar(Number(document.getElementById('sel-mes').value), Number(document.getElementById('sel-anio').value));
+    return;
+  }
+  // Solo lectura: en modo real no se ejecuta nada que envíe o modifique.
+  if (estado.modo === 'real' && ['enviar', 'dividir', 'no-enviar'].includes(accion)) return;
   estado.aviso = null;
   if (accion === 'abrir') estado.abiertos.has(id) ? estado.abiertos.delete(id) : estado.abiertos.add(id);
   else if (accion === 'marcar') { el.checked ? estado.excluidos.delete(id) : estado.excluidos.add(id); }
@@ -229,6 +329,7 @@ document.addEventListener('click', (ev) => {
 });
 
 document.addEventListener('submit', (ev) => {
+  if (estado.modo === 'real') { ev.preventDefault(); return; }
   const ft = ev.target.closest('form[data-accion="alta-trabajador"]');
   if (ft) {
     ev.preventDefault();
@@ -262,4 +363,4 @@ document.addEventListener('submit', (ev) => {
   dibujar();
 });
 
-dibujar();
+arrancar();

@@ -383,9 +383,9 @@ export function prechequeo(e) {
     if (!quiereNomina && nominas.length) avisos.push('Tiene nómina pero el maestro dice solo SS: no se adjunta');
 
     const adjuntos = [
-      ...(quiereNomina ? nominas.map((f) => ({ tipo: 'nomina', carpeta: 'Nóminas', ruta: f.ruta, bytes: f.bytes ?? 0, nominas: f.nominas ?? 1 })) : []),
-      ...(quiereSS ? rnt.map((f) => ({ tipo: 'rnt', carpeta: 'RNT', ruta: f.ruta, bytes: f.bytes ?? 0 })) : []),
-      ...(quiereSS ? rlc.map((f) => ({ tipo: 'rlc', carpeta: 'RLC', ruta: f.ruta, bytes: f.bytes ?? 0 })) : []),
+      ...(quiereNomina ? nominas.map((f) => ({ tipo: 'nomina', carpeta: 'Nóminas', ruta: f.ruta, bytes: f.bytes ?? 0, nominas: f.nominas ?? 1, id: f.id })) : []),
+      ...(quiereSS ? rnt.map((f) => ({ tipo: 'rnt', carpeta: 'RNT', ruta: f.ruta, bytes: f.bytes ?? 0, id: f.id })) : []),
+      ...(quiereSS ? rlc.map((f) => ({ tipo: 'rlc', carpeta: 'RLC', ruta: f.ruta, bytes: f.bytes ?? 0, id: f.id })) : []),
     ];
     const nNominas = adjuntos.filter((x) => x.tipo === 'nomina').reduce((n, x) => n + x.nominas, 0);
     return {
@@ -437,7 +437,7 @@ export function prechequeo(e) {
       const nombre = t ? t.nombre : sinExtension(f.nombre).replace(/\s+nom(ina)?\s+\d{1,2}$/i, '');
       const id = `${r.id} · ${nombre}`;
       const base = { ...comun, id, email: t ? t.email : '', asunto, cuenta: cuenta([f], [], []), bytes: f.bytes ?? 0, faltan: [] };
-      const adjunto = { tipo: 'nomina', carpeta: 'Nóminas', ruta: f.ruta, bytes: f.bytes ?? 0 };
+      const adjunto = { tipo: 'nomina', carpeta: 'Nóminas', ruta: f.ruta, bytes: f.bytes ?? 0, id: f.id };
       if (t) usados.add(t);
       if (!t) {
         if (quienes.length === 0) trabajadoresNuevos.push({ empresa: r.id, nombre, ruta: f.ruta });
