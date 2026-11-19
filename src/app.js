@@ -5,7 +5,7 @@ import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js';
 import { demo } from './demo.js';
 import { cuerpoHtml } from './correo.js';
 import * as graph from './graph.js';
-import { cargarMes } from './datos.js';
+import { cargarMes, prepararSS, ejecutarSS } from './datos.js';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -21,6 +21,8 @@ const estado = {
   cargando: null,
   errorCarga: null,
   avisosCarga: [],
+  // División de los seguros sociales conjuntos: null | { prep } | { error }
+  ss: null,
   excluidos: new Set(),
   abiertos: new Set(),
   confirmando: false,
@@ -104,6 +106,71 @@ function formularioNueva(n, i, seguros) {
   </form>`;
 }
 
+function bloqueSS(conjuntos) {
+  const lista = conjuntos.map((h) => `<li><span class="eti">${esc(h.carpeta)}</span> <code>${esc(h.ruta)}</code></li>`).join('');
+  const real = estado.modo === 'real';
+  if (!estado.ss) {
+    return `<p class="ayuda">Han llegado los RLC y RNT de todas las empresas en un PDF conjunto. Hay que dividirlos en un PDF por
+      empresa, nombrado con su razón social, antes de poder enviarlos.</p>
+      <ul class="ficheros suelto">${lista}</ul>
+      <div class="botones"><button class="b prim" data-accion="ss-preparar" ${real ? '' : 'disabled title="Inicia sesión para dividir los seguros sociales reales"'}>Revisar la división</button></div>`;
+  }
+  if (estado.ss.error) {
+    return `<p class="error" role="alert">${esc(estado.ss.error)}</p>
+      <div class="botones"><button class="b" data-accion="ss-cancelar">Volver</button></div>`;
+  }
+  const { plan, yaDivididos, conjuntos: orig } = estado.ss.prep;
+  const nRlc = plan.ficheros.filter((f) => f.tipo === 'RLC').length;
+  const nRnt = plan.ficheros.filter((f) => f.tipo === 'RNT').length;
+  const filas = plan.ficheros.map((f) => `<li><span class="eti">${esc(f.tipo)}</span> <code>${esc(f.nombre)}</code>
+    <span class="tenue">${esc(f.calificador === 'L00' ? '' : f.calificador)}${f.existe ? ' · ya existe' : ''}</span></li>`).join('');
+  if (!plan.ok) {
+    return `<p class="error" role="alert">No se puede dividir. No se ha tocado ningún fichero.</p>
+      ${plan.errores.map((e) => `<p class="nota">${esc(e)}</p>`).join('')}
+      <div class="botones"><button class="b" data-accion="ss-cancelar">Volver</button></div>`;
+  }
+  const accion = yaDivididos
+    ? `<p class="ayuda">Estos seguros sociales ya estaban divididos: todos los ficheros existen en la carpeta. Solo queda apartar
+        los PDF conjuntos en la subcarpeta Originales para que no estorben.</p>
+       <button class="b prim" data-accion="ss-ejecutar">Apartar los conjuntos en Originales</button>`
+    : `<p class="ayuda">Se crearán ${nRlc} RLC y ${nRnt} RNT en sus carpetas. Los PDF conjuntos no se borran: se apartan en la
+        subcarpeta Originales. Si ya existiera un fichero con el mismo nombre, no se sobrescribe.</p>
+       <button class="b prim" data-accion="ss-ejecutar">Dividir y guardar en OneDrive</button>`;
+  return `<p><strong>${plan.ficheros.length} liquidaciones</strong> en ${orig.map((o) => `<code>${esc(o.clave)}</code>`).join(' y ')}.</p>
+    ${plan.avisos.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}
+    <details><summary>Ver los ${plan.ficheros.length} ficheros que salen</summary><ul class="ficheros suelto">${filas}</ul></details>
+    ${accion}
+    <div class="botones"><button class="b" data-accion="ss-cancelar">Cancelar</button></div>`;
+}
+
+async function accionSS(accion) {
+  if (accion === 'ss-cancelar') { estado.ss = null; dibujar(); return; }
+  if (estado.modo !== 'real') return;
+  if (accion === 'ss-preparar') {
+    estado.cargando = 'Preparando la división de los seguros sociales…'; dibujar();
+    try {
+      const prep = await prepararSS(estado.mes, estado.anio, (t) => { estado.cargando = t; dibujar(); });
+      estado.ss = prep.ok ? { prep } : { error: prep.motivo };
+    } catch (e) { estado.ss = { error: `No se ha podido preparar: ${e.message}` }; }
+    estado.cargando = null; dibujar();
+    return;
+  }
+  if (accion === 'ss-ejecutar' && estado.ss?.prep) {
+    const prep = estado.ss.prep;
+    estado.cargando = 'Dividiendo los seguros sociales…'; dibujar();
+    try {
+      const r = await ejecutarSS(prep, (t) => { estado.cargando = t; dibujar(); });
+      estado.ss = null;
+      await cargar(estado.mes, estado.anio);
+      estado.aviso = `Seguros sociales: ${r.subidos.length} ficheros creados y ${r.movidos.length} conjuntos apartados en Originales.`;
+    } catch (e) {
+      estado.ss = { error: `Se ha detenido a mitad: ${e.message}. Revisa las carpetas RLC y RNT antes de volver a intentarlo.` };
+      estado.cargando = null;
+    }
+    dibujar();
+  }
+}
+
 function dibujarContenido() {
   const { r, erroresMaestro } = calcular();
   const seleccion = r.listos.filter((c) => !estado.excluidos.has(c.id));
@@ -114,7 +181,8 @@ function dibujarContenido() {
   const trabNuevos = r.nuevas.trabajadores;
   const idsTrabNuevos = new Set(trabNuevos.map((t) => `${t.empresa} · ${t.nombre}`));
   const incidencias = r.incidencias.filter((c) => !idsTrabNuevos.has(c.id));
-  const bloqueos = nNuevas + trabNuevos.length + porDividir.length + incidencias.length + erroresMaestro.length;
+  const bloqueos = nNuevas + trabNuevos.length + porDividir.length + incidencias.length + erroresMaestro.length +
+    (r.nuevas.sinRenombrar.length ? 1 : 0);
   const ss = r.periodoSS;
 
   const resumen = [
@@ -125,6 +193,10 @@ function dibujarContenido() {
   ].map(([h, n, t, tono]) => `<a class="tile ${tono}" href="${h}"><span class="n">${n}</span><span class="t">${t}</span></a>`).join('');
 
   let antes = '';
+  const conjuntosSS = r.nuevas.sinRenombrar;
+  if (conjuntosSS.length || estado.ss) {
+    antes += `<div class="bloque"><h3>Seguros sociales sin dividir</h3>${bloqueSS(conjuntosSS)}</div>`;
+  }
   if (r.nuevas.nominas.length || segurosSueltos.length) {
     antes += `<div class="bloque"><h3>Empresas nuevas</h3>
       <p class="ayuda">Hay documentos de empresas que no están en el maestro. No se envían a nadie hasta que indiques el correo.</p>
@@ -152,9 +224,8 @@ function dibujarContenido() {
       <ul class="lista">${incidencias.map((c) => filaCliente(c, { extra: `<span class="pil mal">${esc(c.avisos[0] ?? 'Revisar')}</span>` })).join('')}</ul>
       ${erroresMaestro.map((e) => `<p class="nota">Maestro, fila ${e.fila}: ${esc(e.detalle)}</p>`).join('')}</div>`;
   }
-  if (r.nuevas.sinRenombrar.length || r.nuevas.otros.length || r.ambiguos.length) {
+  if (r.nuevas.otros.length || r.ambiguos.length) {
     antes += `<div class="bloque"><h3>Ficheros sin dueño</h3><ul class="ficheros suelto">
-      ${r.nuevas.sinRenombrar.map((h) => `<li><span class="eti">${esc(h.carpeta)}</span> <code>${esc(h.ruta)}</code> <span class="tenue">sin renombrar por razón social</span></li>`).join('')}
       ${r.nuevas.otros.map((h) => `<li><span class="eti">${esc(h.carpeta)}</span> <code>${esc(h.ruta)}</code> <span class="tenue">${esc(h.motivo)}</span></li>`).join('')}
       ${r.ambiguos.map((h) => `<li><span class="eti">${esc(h.carpeta)}</span> <code>${esc(h.ruta)}</code> <span class="tenue">casa con varias filas: ${esc(h.filas.join(', '))}</span></li>`).join('')}
     </ul></div>`;
@@ -236,6 +307,7 @@ function bloquearCambios() {
 }
 
 async function cargar(mes, anio, { probarAnterior = false } = {}) {
+  estado.ss = null;
   estado.errorCarga = null; estado.avisosCarga = []; estado.aviso = null; estado.confirmando = false;
   estado.mes = mes; estado.anio = anio;
   estado.cargando = 'Conectando con Microsoft 365…';
@@ -292,6 +364,7 @@ document.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-accion]');
   if (!el || el.tagName === 'FORM') return;
   const { accion, id } = el.dataset;
+  if (accion && accion.startsWith('ss-')) { accionSS(accion); return; }
   if (accion === 'entrar') { graph.entrar(); return; }
   if (accion === 'salir') { graph.salir(); return; }
   if (accion === 'cargar') {

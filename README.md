@@ -20,6 +20,7 @@ carpetas reales. Las librerías de terceros están copiadas en `vendor/` para no
 | Inicio de sesión con Microsoft y lectura de carpetas, maestro y Enviados (`src/graph.js`, `src/datos.js`) | Hecho, en solo lectura; pendiente de probar con la cuenta real |
 | Envío de correos y verificación en Enviados | Pendiente |
 | Pantalla del pre-chequeo (`index.html`, `src/app.js`) | Hecha con datos de demostración (`src/demo.js`) |
+| División de RLC/RNT conjuntos (`src/seguros.js`) | Hecha; primera función que escribe en OneDrive |
 | Alta de empresas nuevas desde la pantalla | Hecha en la demostración; falta escribir en el maestro real |
 
 ## Qué hace el motor
@@ -46,6 +47,19 @@ Además lista los **huérfanos**: ficheros que no casan con ninguna fila del mae
   Solo se tolera la puntuación; una razón social parecida no casa.
 - Si dos clientes comparten correo, el asunto lleva el nombre de la empresa.
 - Comprobación final: ningún fichero puede quedar asignado a dos correos.
+
+## Seguros sociales: dividir los PDF conjuntos
+
+Los RLC y RNT llegan en un PDF por tipo (`RLC.pdf`, `RNT.pdf`) con todas las empresas. Paso previo al envío:
+
+1. Se lee cada página: razón social, cuenta de cotización, número de liquidación, periodo, calificador y paginación.
+2. Se corta un PDF por liquidación, con el nombre de la razón social. Si una empresa tiene varias liquidaciones,
+   la normal (L00) va sin número y las demás (vacaciones, atrasos…) con `(2)`, `(3)`…, igual en RLC y RNT.
+3. Se guardan en la misma carpeta sin sobrescribir nada, y los PDF conjuntos se apartan en la subcarpeta `Originales`.
+
+No se divide nada si alguna página no se lee, si el periodo no es el esperado, si una liquidación está incompleta o
+repetida, o si parte de los ficheros ya existen. Probado con septiembre de 2026: los 80 ficheros coinciden en nombre
+y contenido con los que se renombraron entonces.
 
 ## Empresas nuevas
 
@@ -86,4 +100,5 @@ Usan datos inventados. Para probar contra un mes real, con los datos fuera del r
 ```
 node herramientas/prueba-real.mjs <maestro.json> <listado.tsv> <mes> <año> [corte_epoch] [alias_ya_enviados]
 node herramientas/prueba-dividir.mjs <mes> <año> <carpeta_salida> <pdf>...
+node herramientas/prueba-seguros.mjs <mes> <año> <existentes.tsv|-> <pdf>...
 ```

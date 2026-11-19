@@ -45,16 +45,18 @@ export class ErrorGraph extends Error {
   constructor(estado, mensaje) { super(mensaje); this.estado = estado; }
 }
 
-async function pedir(url) {
-  const r = await fetch(url.startsWith('http') ? url : GRAPH + url, {
-    headers: { Authorization: `Bearer ${await token()}` },
-  });
+async function pedir(url, { metodo = 'GET', cuerpo, tipo } = {}) {
+  const cabeceras = { Authorization: `Bearer ${await token()}` };
+  let body;
+  if (cuerpo instanceof Uint8Array) { body = cuerpo; cabeceras['Content-Type'] = tipo ?? 'application/octet-stream'; }
+  else if (cuerpo !== undefined) { body = JSON.stringify(cuerpo); cabeceras['Content-Type'] = 'application/json'; }
+  const r = await fetch(url.startsWith('http') ? url : GRAPH + url, { method: metodo, headers: cabeceras, body });
   if (!r.ok) {
     let detalle = '';
     try { detalle = (await r.json()).error?.message ?? ''; } catch { /* sin detalle */ }
     throw new ErrorGraph(r.status, detalle || `Microsoft respondió ${r.status}`);
   }
-  return r.json();
+  return r.status === 204 ? null : r.json();
 }
 
 const ruta = (p) => p.split('/').map(encodeURIComponent).join('/');
@@ -96,6 +98,35 @@ export async function descargar(fichero) {
   const r = await fetch(fichero.descarga);
   if (!r.ok) throw new Error(`No se pudo descargar ${fichero.nombre} (${r.status})`);
   return new Uint8Array(await r.arrayBuffer());
+}
+
+/**
+ * Sube un fichero nuevo a una carpeta. Si ya existe uno con ese nombre, falla: nunca sobrescribe.
+ * Válido para ficheros de hasta 4 MB (los PDF de nóminas y seguros sociales pesan unos cientos de KB).
+ */
+export async function subir(base, subrutaCarpeta, nombre, bytes, tipo = 'application/pdf') {
+  if (bytes.length > 4 * 1024 * 1024) throw new Error(`${nombre} supera 4 MB`);
+  const url = `/drives/${base.drive}/items/${base.id}:/${ruta(`${subrutaCarpeta}/${nombre}`)}:/content` +
+    '?@microsoft.graph.conflictBehavior=fail';
+  return pedir(url, { metodo: 'PUT', cuerpo: bytes, tipo });
+}
+
+/** Devuelve el id de una subcarpeta, creándola si no existe. */
+export async function asegurarCarpeta(base, subrutaPadre, nombre) {
+  const existentes = (await listar(base, subrutaPadre)) ?? [];
+  const ya = existentes.find((f) => f.esCarpeta && f.nombre.toLowerCase() === nombre.toLowerCase());
+  if (ya) return ya.id;
+  const it = await pedir(`/drives/${base.drive}/items/${base.id}:/${ruta(subrutaPadre)}:/children`, {
+    metodo: 'POST', cuerpo: { name: nombre, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' },
+  });
+  return it.id;
+}
+
+/** Mueve un fichero a otra carpeta (por id). No borra nada. */
+export async function mover(base, idFichero, idCarpeta) {
+  return pedir(`/drives/${base.drive}/items/${idFichero}`, {
+    metodo: 'PATCH', cuerpo: { parentReference: { id: idCarpeta } },
+  });
 }
 
 /**

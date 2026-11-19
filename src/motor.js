@@ -66,6 +66,11 @@ export function textoCorreo({ nNominas, tieneSS, aTrabajador = false }) {
   return `Buenos días,\nAdjunto ${que} del mes en curso.`;
 }
 
+/** ¿Es un PDF conjunto de seguros sociales sin dividir? ("RLC.pdf", "RNT (1).pdf", "rlc-1.pdf"…) */
+export function pareceConjuntoSS(nombre) {
+  return /^(rlc|rnt)\s*([-_ ]?\(?\d+\)?)?\.pdf$/i.test(String(nombre).trim());
+}
+
 /** Periodo de seguros sociales = mes de la nómina − 1 (enero → diciembre del año anterior). */
 export function periodoSeguros(mes, anio) {
   return mes === 1 ? { mes: 12, anio: anio - 1 } : { mes: mes - 1, anio };
@@ -516,7 +521,7 @@ export function candidatosNuevos(huerfanos) {
       if (!alias) { otros.push(h); continue; }
       nominas.push({ alias, ruta: h.ruta });
     } else {
-      if (w.length === 1 && (w[0] === 'rnt' || w[0] === 'rlc')) { sinRenombrar.push(h); continue; }
+      if (pareceConjuntoSS(nombre)) { sinRenombrar.push(h); continue; }
       const razon = base.replace(/\s*\(?\d{1,2}\)?\s*$/, '').trim();
       const k = palabras(razon).join(' ');
       if (!seguros.has(k)) seguros.set(k, { razon, rnt: [], rlc: [] });

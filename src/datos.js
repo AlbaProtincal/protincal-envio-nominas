@@ -1,6 +1,7 @@
 // Reúne todo lo que necesita el motor para un mes, leyéndolo de OneDrive y del correo.
 import { CONFIG } from './config.js';
-import { carpetasDelMes, dosCifras, palabras } from './motor.js';
+import { carpetasDelMes, dosCifras, palabras, pareceConjuntoSS, periodoSeguros } from './motor.js';
+import { analizarPaginaSS, planSS, cortarSS } from './seguros.js';
 import { analizarPagina, leerPaginas } from './dividir.js';
 import * as graph from './graph.js';
 import { leerXlsx } from './xlsx.js';
@@ -101,4 +102,74 @@ export async function cargarMes(mes, anio, avisar = () => {}) {
         `(se cuentan como una nómina, lo que afecta al texto del correo): ${ilegibles.join(', ')}`] : []),
     ],
   };
+}
+
+/**
+ * Prepara la división de los RLC/RNT conjuntos del mes: descarga, lee cada página y planifica.
+ * No escribe nada. Marca qué ficheros de salida ya existen en la carpeta.
+ */
+export async function prepararSS(mes, anio, avisar = () => {}) {
+  const c = carpetasDelMes(mes, anio);
+  const base = await graph.carpetaBase();
+  const carpetas = { RLC: c.rlc, RNT: c.rnt };
+  const conjuntos = [];
+  const existentes = { RLC: new Set(), RNT: new Set() };
+  for (const [tipo, carpeta] of Object.entries(carpetas)) {
+    const lista = (await graph.listar(base, carpeta)) ?? [];
+    for (const f of lista.filter((x) => !x.esCarpeta)) {
+      if (pareceConjuntoSS(f.nombre)) conjuntos.push({ ...f, carpeta, tipoCarpeta: tipo, clave: `${tipo}/${f.nombre}` });
+      else existentes[tipo].add(f.nombre.toLowerCase());
+    }
+  }
+  if (!conjuntos.length) return { ok: false, motivo: 'No hay seguros sociales sin dividir en las carpetas RLC y RNT' };
+
+  const pdfjsLib = await cargarPdfjs();
+  const porFichero = {}; const bytes = {};
+  for (const [i, f] of conjuntos.entries()) {
+    avisar(`Leyendo ${f.clave} (${i + 1} de ${conjuntos.length})…`);
+    bytes[f.clave] = await graph.descargar(f);
+    porFichero[f.clave] = (await leerPaginas(bytes[f.clave].slice(), pdfjsLib)).map(analizarPaginaSS);
+  }
+  const plan = planSS(porFichero, periodoSeguros(mes, anio));
+  for (const fx of plan.ficheros) {
+    const origen = conjuntos.find((x) => x.clave === fx.origen);
+    fx.carpeta = origen.carpeta;
+    if (fx.tipo !== origen.tipoCarpeta) {
+      plan.ok = false;
+      plan.errores.push(`${fx.origen} contiene ${fx.tipo} pero está en la carpeta ${origen.tipoCarpeta}`);
+    }
+    fx.existe = existentes[fx.tipo].has(fx.nombre.toLowerCase());
+  }
+  const nuevos = plan.ficheros.filter((f) => !f.existe).length;
+  const yaDivididos = plan.ok && plan.ficheros.length > 0 && nuevos === 0;
+  if (plan.ok && nuevos && nuevos !== plan.ficheros.length) {
+    plan.ok = false;
+    plan.errores.push('Algunos ficheros ya existen en la carpeta y otros no. Revisa la carpeta antes de dividir: ' +
+      plan.ficheros.filter((f) => f.existe).map((f) => `${f.tipo}/${f.nombre}`).join(' · '));
+  }
+  return { ok: true, mes, anio, base, conjuntos, bytes, plan, yaDivididos };
+}
+
+/** Divide y guarda: sube un PDF por liquidación y mueve los conjuntos a la subcarpeta "Originales". */
+export async function ejecutarSS(prep, avisar = () => {}) {
+  const { base, plan, conjuntos, bytes, yaDivididos } = prep;
+  if (!plan.ok) throw new Error('El plan tiene errores: no se divide nada');
+  const subidos = [];
+  if (!yaDivididos) {
+    const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js');
+    const salidas = await cortarSS(plan, bytes, { PDFDocument });
+    for (const [i, f] of salidas.entries()) {
+      avisar(`Guardando ${f.tipo}/${f.nombre} (${i + 1} de ${salidas.length})…`);
+      await graph.subir(base, f.carpeta, f.nombre, f.bytes);
+      subidos.push(`${f.tipo}/${f.nombre}`);
+    }
+  }
+  const movidos = [];
+  for (const c of conjuntos) {
+    avisar(`Apartando ${c.clave} en Originales…`);
+    const idCarpeta = await graph.asegurarCarpeta(base, c.carpeta, 'Originales');
+    await graph.mover(base, c.id, idCarpeta);
+    movidos.push(c.clave);
+  }
+  return { subidos, movidos };
 }

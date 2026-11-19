@@ -124,7 +124,7 @@ export async function leerPaginas(bytes, pdfjs) {
   for (let n = 1; n <= doc.numPages; n++) {
     const pagina = await doc.getPage(n);
     const contenido = await pagina.getTextContent();
-    paginas.push(contenido.items.map((it) => ({ str: it.str, x: it.transform[4], y: it.transform[5] })));
+    paginas.push(contenido.items.map((it) => ({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width ?? 0 })));
   }
   await tarea.destroy();
   return paginas;
