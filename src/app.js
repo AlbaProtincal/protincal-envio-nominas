@@ -217,8 +217,9 @@ function dibujarContenido() {
     ${seccion('enviados', 'Ya enviados este mes', r.yaEnviados.length, r.yaEnviados.length
       ? `<ul class="lista">${r.yaEnviados.map((c) => filaCliente(c, { extra: `<span class="pil ok">${esc(estado.enviados.find((e) => e.id === c.id)?.cuando ?? 'Enviado')}</span>` })).join('')}</ul>`
       : '<p class="vacio">Todavía no se ha enviado nada.</p>')}
-    <details class="sec plegada"><summary>No se les envía (${r.noSeEnvia.length})</summary>
-      <ul class="lista">${r.noSeEnvia.map((c) => filaCliente(c, { extra: '<span class="pil">Maestro: NADA</span>' })).join('')}</ul></details>
+    <details class="sec plegada" ${r.noSeEnvia.some((c) => c.cuenta.nominas) ? 'open' : ''}><summary>No se envían por correo (${r.noSeEnvia.length})</summary>
+      <p class="ayuda">La app no les envía nada. Si tienen nómina este mes, hay que hacerla llegar por otra vía.</p>
+      <ul class="lista">${r.noSeEnvia.map((c) => filaCliente(c, { extra: `${c.cuenta.nominas ? `<span class="pil ojo">${plural(c.cuenta.nominas, 'nómina', 'nóminas')} este mes</span>` : ''}<span class="pil">${esc(c.notas || 'Maestro: NADA')}</span>` })).join('')}</ul></details>
     <footer class="pie">Carpetas: <code>${esc(r.carpetas.nominas)}</code> · <code>${esc(r.carpetas.rnt)}</code> · <code>${esc(r.carpetas.rlc)}</code></footer>`;
 }
 
