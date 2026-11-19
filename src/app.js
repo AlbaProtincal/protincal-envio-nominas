@@ -269,7 +269,7 @@ function dibujarContenido() {
     </header>
     ${sesion}
     ${real
-      ? '<p class="demo" role="note">Versión de prueba en solo lectura: lee tus carpetas y tu correo, pero no envía, no divide y no modifica el maestro.</p>'
+      ? '<p class="demo" role="note">Versión de prueba: lee tus carpetas y tu correo. Todavía no envía correos, no divide nóminas ni modifica el maestro. Solo divide los seguros sociales, y únicamente cuando lo confirmas.</p>'
       : '<p class="demo" role="note">Demostración con datos inventados. Inicia sesión para ver tus carpetas reales.</p>'}
     ${estado.errorCarga ? `<p class="error" role="alert">${esc(estado.errorCarga)}</p>` : ''}
     ${estado.avisosCarga.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}`;
