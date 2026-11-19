@@ -98,20 +98,6 @@ export async function descargar(fichero) {
   return new Uint8Array(await r.arrayBuffer());
 }
 
-/** Valores de una hoja de un Excel de OneDrive. Devuelve [] si la hoja no existe. */
-export async function leerHoja(base, subruta, hoja) {
-  const url = `/drives/${base.drive}/items/${base.id}:/${ruta(subruta)}:` +
-    `/workbook/worksheets('${encodeURIComponent(hoja)}')/usedRange(valuesOnly=true)?$select=values`;
-  try {
-    const r = await pedir(url);
-    // Excel devuelve "" en las celdas vacías; el motor espera null.
-    return (r.values ?? []).map((f) => f.map((v) => (v === '' ? null : v)));
-  } catch (e) {
-    if (e instanceof ErrorGraph && e.estado === 404) return [];
-    throw e;
-  }
-}
-
 /** Correos de Elementos enviados desde una fecha: destinatario y asunto de cada uno. */
 export async function enviadosDesde(fechaIso, maximo = 2000) {
   const salida = [];

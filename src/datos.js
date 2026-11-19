@@ -3,6 +3,7 @@ import { CONFIG } from './config.js';
 import { carpetasDelMes, dosCifras, palabras } from './motor.js';
 import { analizarPagina, leerPaginas } from './dividir.js';
 import * as graph from './graph.js';
+import { leerXlsx } from './xlsx.js';
 
 let pdfjs = null;
 async function cargarPdfjs() {
@@ -15,16 +16,16 @@ async function cargarPdfjs() {
 
 const nominasPorPdf = new Map(); // id + fecha de modificación → nº de nóminas dentro
 
-/** Cuántas nóminas (trabajadores distintos) hay dentro de un PDF. */
+/** Cuántas nóminas (trabajadores distintos) hay dentro de un PDF. null si no se ha podido leer. */
 async function contarNominas(f) {
   const clave = `${f.id}:${f.modificado}`;
   if (nominasPorPdf.has(clave)) return nominasPorPdf.get(clave);
-  let n = 1;
+  let n = null;
   try {
     const paginas = (await leerPaginas(await graph.descargar(f), await cargarPdfjs())).map(analizarPagina);
     n = paginas.every((p) => p.ok) ? new Set(paginas.map((p) => p.dni)).size : Math.max(paginas.length, 1);
-  } catch { /* si no se puede leer, se cuenta como una */ }
-  nominasPorPdf.set(clave, n);
+  } catch { /* se avisa más abajo */ }
+  if (n !== null) nominasPorPdf.set(clave, n);
   return n;
 }
 
@@ -64,18 +65,26 @@ export async function cargarMes(mes, anio, avisar = () => {}) {
   const rlc = (rlcBruto ?? []).filter((f) => !f.esCarpeta).map((f) => aFichero(f));
 
   avisar('Leyendo el maestro…');
-  const [tabla, tablaTrab] = await Promise.all([
-    graph.leerHoja(base, CONFIG.maestro, 'Maestro'),
-    graph.leerHoja(base, CONFIG.maestro, 'Trabajadores'),
-  ]);
-  if (tabla.length < 2) return { ok: false, motivo: 'No se ha podido leer la hoja Maestro del Excel maestro' };
+  // Se descarga el Excel y se lee aquí: no depende del servicio de Excel en línea.
+  const partes = CONFIG.maestro.split('/');
+  const nombreMaestro = partes.pop();
+  const carpetaMaestro = (await graph.listar(base, partes.join('/'))) ?? [];
+  const ficheroMaestro = carpetaMaestro.find((f) => f.nombre === nombreMaestro);
+  if (!ficheroMaestro) return { ok: false, motivo: `No encuentro el maestro: ${CONFIG.maestro}` };
+  const hojas = await leerXlsx(await graph.descargar(ficheroMaestro));
+  const tabla = hojas.Maestro ?? [];
+  const tablaTrab = hojas.Trabajadores ?? [];
+  if (tabla.length < 2) return { ok: false, motivo: 'El Excel maestro no tiene la hoja Maestro o está vacía' };
 
   // Solo se abren los PDF conjuntos de nómina (los de la raíz): los individuales llevan una cada uno.
   const conjuntas = nominas.filter((f) => !f.ruta.includes('/') && /\.pdf$/i.test(f.nombre) &&
     !palabras(f.nombre).includes('costes'));
   let hechas = 0;
+  const ilegibles = [];
   await enTandas(conjuntas, 4, async (f) => {
-    f.nominas = await contarNominas(f);
+    const n = await contarNominas(f);
+    f.nominas = n ?? 1;
+    if (n === null) ilegibles.push(f.nombre);
     hechas += 1;
     avisar(`Contando nóminas dentro de cada PDF (${hechas} de ${conjuntas.length})…`);
   });
@@ -88,6 +97,8 @@ export async function cargarMes(mes, anio, avisar = () => {}) {
     avisos: [
       ...(rntBruto ? [] : [`No existe la carpeta ${c.rnt}`]),
       ...(rlcBruto ? [] : [`No existe la carpeta ${c.rlc}`]),
+      ...(ilegibles.length ? [`No se han podido abrir ${ilegibles.length} PDF de nóminas para contar los trabajadores ` +
+        `(se cuentan como una nómina, lo que afecta al texto del correo): ${ilegibles.join(', ')}`] : []),
     ],
   };
 }
