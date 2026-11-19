@@ -133,8 +133,8 @@ export function leerMaestro(tabla, tablaTrabajadores = []) {
     };
     fila.individuales = fila.envio !== 'CONJUNTO';
     if (aliases.length === 0) errores.push({ fila: numFila, detalle: 'Fila sin alias de nómina' });
-    if (fila.envio === 'TRABAJADOR' && (rec === 'AMBAS' || rec === 'SS')) {
-      errores.push({ fila: numFila, detalle: 'Envío a cada trabajador: RECIBE tiene que ser NOMINA (los seguros sociales no van a los trabajadores)' });
+    if (fila.envio === 'TRABAJADOR' && (rec === 'AMBAS' || rec === 'SS') && !correo) {
+      errores.push({ fila: numFila, detalle: 'Envío a cada trabajador sin correo de empresa: RECIBE tiene que ser NOMINA (los seguros sociales no van a los trabajadores)' });
       fila.recibe = 'INVALIDO';
     } else if (!RECIBE_VALIDOS.includes(rec)) {
       errores.push({ fila: numFila, detalle: `RECIBE no válido: "${recibe ?? ''}"` });
@@ -300,8 +300,20 @@ export function prechequeo(e) {
   const porNombre = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
   const trabajadoresNuevos = [];
   const clientes = maestro.flatMap((r) => {
-    if (r.envio === 'TRABAJADOR' && r.recibe === 'NOMINA') return porTrabajador(r);
+    if (r.envio === 'TRABAJADOR' && ['NOMINA', 'AMBAS', 'SS'].includes(r.recibe)) {
+      // Cada trabajador recibe su nómina; si la fila tiene correo, la empresa recibe además
+      // lo que diga RECIBE (todas las nóminas y/o los seguros sociales) en un correo aparte.
+      const entradas = porTrabajador(r);
+      if (r.email) entradas.push(filaNormal(r, { copiaEmpresa: true }));
+      return entradas;
+    }
+    return [filaNormal(r)];
+  });
+
+  function filaNormal(r, { copiaEmpresa = false } = {}) {
+    const idEntrada = copiaEmpresa ? `${r.id} (empresa)` : r.id;
     const avisos = [];
+    if (copiaEmpresa) avisos.push('Copia para la empresa: cada trabajador recibe además su nómina en un correo aparte');
     const faltan = [];
     const quiereNomina = r.recibe === 'AMBAS' || r.recibe === 'NOMINA';
     const quiereSS = r.recibe === 'AMBAS' || r.recibe === 'SS';
@@ -344,10 +356,11 @@ export function prechequeo(e) {
     if (compartido) avisos.push('Correo compartido con otro cliente: el asunto lleva el nombre de la empresa');
 
     const base = {
-      fila: r.fila, id: r.id, email: r.email, recibe: r.recibe, asunto, notas: r.notas,
+      fila: r.fila, id: idEntrada, email: r.email, ...(copiaEmpresa ? { empresa: r.id, copiaEmpresa: true } : {}), recibe: r.recibe, asunto, notas: r.notas,
       individuales: r.individuales,
       // Lo que la app tiene que dividir antes de poder enviar a este cliente.
-      porDividir: faltaDividir && sueltasFila.length === 1
+      // En la copia para la empresa la división la propone la entrada de los trabajadores.
+      porDividir: !copiaEmpresa && faltaDividir && sueltasFila.length === 1
         ? { origen: sueltasFila[0].ruta, destino: carpetaIndividuales(r) } : null,
     };
     const tieneAlgo = nominas.length + sueltasFila.length + rnt.length + rlc.length > 0;
@@ -361,8 +374,9 @@ export function prechequeo(e) {
         avisos: ['Columna RECIBE no válida en el maestro'] };
     }
 
-    const enRegistro = yaEnviados.has(palabras(r.id).join(' ')) ||
-      r.aliases.some((a) => yaEnviados.has(palabras(a).join(' ')));
+    const enRegistro = copiaEmpresa
+      ? yaEnviados.has(palabras(idEntrada).join(' '))
+      : yaEnviados.has(palabras(r.id).join(' ')) || r.aliases.some((a) => yaEnviados.has(palabras(a).join(' ')));
     const enOutlook = r.email && enviadosOutlook.some((c) =>
       c.para === r.email.toLowerCase() && c.asunto === palabras(asunto).join(' '));
     if (enRegistro || enOutlook) {
@@ -404,7 +418,7 @@ export function prechequeo(e) {
       faltan,
       avisos,
     };
-  });
+  }
 
   // ---- 4 bis. Empresas cuyas nóminas van directamente a cada trabajador ----------------
   function porTrabajador(r) {
@@ -471,12 +485,19 @@ export function prechequeo(e) {
   }
 
   // ---- 5. Comprobación final: ningún fichero puede ir a dos correos ------------------
+  // Única excepción: la copia para la empresa puede llevar las nóminas que van a SUS trabajadores.
   const visto = new Map();
   for (const c of clientes) {
     for (const a of c.adjuntos) {
       const k = `${a.carpeta}/${a.ruta}`;
-      if (visto.has(k)) throw new Error(`Fallo de seguridad: ${k} asignado a "${visto.get(k)}" y a "${c.id}"`);
-      visto.set(k, c.id);
+      const otro = visto.get(k);
+      if (otro) {
+        const permitido = otro.empresa && otro.empresa === c.empresa && otro.copiaEmpresa !== c.copiaEmpresa;
+        if (!permitido) throw new Error(`Fallo de seguridad: ${k} asignado a "${otro.id}" y a "${c.id}"`);
+        if (!c.copiaEmpresa) visto.set(k, c);
+        continue;
+      }
+      visto.set(k, c);
     }
   }
 

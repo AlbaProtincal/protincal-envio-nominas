@@ -87,3 +87,46 @@ test('trabajador apuntado a una empresa que no existe: error de maestro', () => 
   const { errores } = leerMaestro(TABLA, [CABT, ['otra', 'ANA', 'a@example.com']]);
   assert.match(errores[0].detalle, /no es un alias/);
 });
+
+// ---- Empresa que además quiere copia (nóminas + seguros sociales) en su correo ----------
+const TABLA_COPIA = [CAB, ['asociacion;asoc barrio', 'ASOCIACION DEL BARRIO', 'junta@example.com', 'AMBAS', null, 'TRABAJADOR']];
+const MC = leerMaestro(TABLA_COPIA, TRAB);
+const preC = (extra) => prechequeo({ mes: 10, anio: 2026, maestro: MC.filas, nominas: DIVIDIDA,
+  rnt: [f('ASOCIACION DEL BARRIO.pdf')], rlc: [f('ASOCIACION DEL BARRIO.pdf')], ...extra });
+
+test('copia a la empresa: con correo de empresa, AMBAS con TRABAJADOR es válido', () => {
+  assert.equal(MC.errores.length, 0);
+});
+
+test('copia a la empresa: cada trabajadora su nómina y la empresa todas las nóminas + RNT + RLC', () => {
+  const r = preC();
+  assert.equal(r.listos.length, 3);
+  const emp = r.listos.find((c) => c.email === 'junta@example.com');
+  assert.equal(emp.id, 'asociacion (empresa)');
+  assert.deepEqual(emp.adjuntos.map((a) => a.tipo).sort(), ['nomina', 'nomina', 'rlc', 'rnt']);
+  assert.equal(emp.asunto, 'NOMINAS OCTUBRE 2026');
+  assert.match(emp.texto, /nóminas y seguros sociales/);
+  const ana = r.listos.find((c) => c.email === 'ana@example.com');
+  assert.deepEqual(ana.adjuntos.map((a) => a.ruta), ['ASOCIACION/Mª ANA GIL SANZ nom 10.pdf']);
+  assert.ok(r.listos.every((c) => c.email === 'junta@example.com' || c.adjuntos.every((a) => a.tipo === 'nomina')));
+});
+
+test('copia a la empresa: sin dividir, solo la entrada de trabajadores propone la división', () => {
+  const r = preC({ nominas: [f('asociacion nom 10.pdf')] });
+  assert.equal(r.listos.length, 0);
+  assert.equal(r.clientes.filter((c) => c.porDividir).length, 1);
+  assert.ok(r.clientes.find((c) => c.id === 'asociacion (empresa)'));
+});
+
+test('copia a la empresa: enviada la de la empresa, las trabajadoras siguen listas', () => {
+  const r = preC({ yaEnviados: ['asociacion (empresa)'] });
+  assert.equal(r.yaEnviados.length, 1);
+  assert.equal(r.listos.length, 2);
+});
+
+test('seguridad: la nómina de una trabajadora nunca va a otra empresa ni a otra trabajadora', () => {
+  const m = leerMaestro([CAB, ['asociacion', null, null, 'NOMINA', null, 'TRABAJADOR']],
+    [CABT, ['asociacion', 'Mª ANA GIL SANZ', 'ana@example.com'], ['asociacion', 'Mª ANA GIL SANZ', 'otra@example.com']]).filas;
+  const r = prechequeo({ mes: 10, anio: 2026, maestro: m, nominas: DIVIDIDA, rnt: [], rlc: [] });
+  assert.ok(r.listos.every((c) => c.email !== 'otra@example.com'));
+});
