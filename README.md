@@ -50,12 +50,13 @@ Además lista los **huérfanos**: ficheros que no casan con ninguna fila del mae
 
 ## Seguros sociales: dividir los PDF conjuntos
 
-Los RLC y RNT llegan en un PDF por tipo (`RLC.pdf`, `RNT.pdf`) con todas las empresas. Paso previo al envío:
+Los RLC y RNT llegan cada mes en `Seguros Sociales/AAAA/MM.AAAA/`, en un PDF por tipo (`RLC.PDF`, `RNT.PDF`) con
+todas las empresas y sin subcarpetas. La app crea las subcarpetas `RLC` y `RNT`. Paso previo al envío:
 
 1. Se lee cada página: razón social, cuenta de cotización, número de liquidación, periodo, calificador y paginación.
 2. Se corta un PDF por liquidación, con el nombre de la razón social. Si una empresa tiene varias liquidaciones,
    la normal (L00) va sin número y las demás (vacaciones, atrasos…) con `(2)`, `(3)`…, igual en RLC y RNT.
-3. Se guardan en la misma carpeta sin sobrescribir nada, y los PDF conjuntos se apartan en la subcarpeta `Originales`.
+3. Se guardan en `RLC/` y `RNT/` sin sobrescribir nada, y los PDF conjuntos se apartan en la subcarpeta `Originales`.
 
 No se divide nada si alguna página no se lee, si el periodo no es el esperado, si una liquidación está incompleta o
 repetida, o si parte de los ficheros ya existen. Probado con septiembre de 2026: los 80 ficheros coinciden en nombre
