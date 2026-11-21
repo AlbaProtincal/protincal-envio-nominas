@@ -322,7 +322,7 @@ function filaConta(f) {
     <div class="cab">
       <button class="nombre" data-accion="conta-abrir" data-id="${esc(f.clave)}" aria-expanded="${abierto}">
         <span class="alias">${esc(f.nombre)}</span>
-        <span class="correo">${esc(f.nif || 'sin NIF')} · ${esc(textoPaso(f))}</span>
+        <span class="paso"><code>${esc(f.nif || 'sin NIF')}</code> · ${esc(textoPaso(f))}</span>
       </button>
       <div class="lado">${pildorasConta(f)}</div>
     </div>${detalle}</li>`;
