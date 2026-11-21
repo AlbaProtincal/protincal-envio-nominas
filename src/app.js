@@ -5,7 +5,8 @@ import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js';
 import { demo } from './demo.js';
 import { cuerpoHtml } from './correo.js';
 import * as graph from './graph.js';
-import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision } from './datos.js';
+import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca } from './datos.js';
+import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -24,6 +25,11 @@ const estado = {
   // División de los seguros sociales conjuntos: null | { prep } | { error }
   ss: null,
   div: null, // división de una nómina en curso: { id, prep } o { id, error }
+  vista: 'envio', // 'envio' | 'contabilidad'
+  conta: null, // datos del tablero de contabilidad del mes: { costes, control, cuadre, guardado } o { error }
+  contaCargando: false,
+  contaAbiertos: new Set(),
+  guardando: null, // clave de la empresa cuya marca se está guardando
   conjuntosSS: null, // en modo real, los PDF conjuntos encontrados al cargar el mes
   excluidos: new Set(),
   abiertos: new Set(),
@@ -220,7 +226,176 @@ async function accionSS(accion) {
   }
 }
 
+function cabeceraHtml(ss) {
+  const real = estado.modo === 'real';
+  const anios = [estado.anio - 1, estado.anio, estado.anio + 1];
+  const sesion = real
+    ? `<div class="sesion"><span class="tenue">${esc(estado.usuario?.correo ?? '')}</span>
+        <label class="oculto" for="sel-mes">Mes</label>
+        <select id="sel-mes">${MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === estado.mes ? 'selected' : ''}>${m[0]}${m.slice(1).toLowerCase()}</option>`).join('')}</select>
+        <label class="oculto" for="sel-anio">Año</label>
+        <select id="sel-anio">${anios.map((a) => `<option ${a === estado.anio ? 'selected' : ''}>${a}</option>`).join('')}</select>
+        <button class="b" data-accion="cargar">Cargar mes</button>
+        <button class="b" data-accion="salir">Cerrar sesión</button></div>`
+    : `<div class="sesion"><button class="b prim" data-accion="entrar" ${estado.sesionDisponible ? '' : 'disabled'}>Iniciar sesión con Microsoft</button></div>`;
+  const cabecera = `
+    <header class="top">
+      <div><p class="marca">PROTINCAL · Laboral</p><h1>${estado.vista === 'contabilidad' ? 'Contabilidad de nóminas' : 'Envío de nóminas'}</h1></div>
+      <div class="periodo"><span class="mes">${MESES[estado.mes - 1]} ${estado.anio}</span>
+        <span class="tenue">${estado.vista === 'contabilidad' ? 'Costes del mes · cuadre con el RLC del mismo mes' : `Seguros sociales de ${dosCifras(ss.mes)}/${ss.anio}`}</span></div>
+    </header>
+    ${sesion}
+    <nav class="pestanas" aria-label="Secciones">
+      <button class="pest" data-accion="vista" data-id="envio" aria-current="${estado.vista === 'envio' ? 'page' : 'false'}">Envío</button>
+      <button class="pest" data-accion="vista" data-id="contabilidad" aria-current="${estado.vista === 'contabilidad' ? 'page' : 'false'}">Contabilidad</button>
+    </nav>
+    ${real
+      ? '<p class="demo" role="note">Versión de prueba: lee tus carpetas y tu correo. Todavía no envía correos ni modifica el maestro. Solo divide los seguros sociales y las nóminas, y guarda las marcas de contabilidad, siempre cuando tú lo pides.</p>'
+      : '<p class="demo" role="note">Demostración con datos inventados. Inicia sesión para ver tus carpetas reales.</p>'}
+    ${estado.errorCarga ? `<p class="error" role="alert">${esc(estado.errorCarga)}</p>` : ''}
+    ${estado.avisosCarga.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}`;
+  return cabecera;
+}
+
+// ---- Tablero de contabilidad ------------------------------------------------------------
+
+function datosConta() {
+  if (estado.modo !== 'real') {
+    if (!estado.conta) {
+      const d = demo.contabilidad;
+      estado.conta = { costes: d.costes, control: { ...leerControl(d.control), modificado: 1000 }, cuadre: d.cuadre ? { ...leerControl(d.cuadre), modificado: 1000 } : null,
+        guardado: structuredClone(d.guardado), hayImportar: true };
+    }
+    return estado.conta;
+  }
+  if (!estado.conta && !estado.contaCargando) {
+    estado.contaCargando = true;
+    cargarContabilidad(estado.mes, estado.anio, (t) => { estado.cargando = t; dibujar(); })
+      .then((d) => { estado.conta = d.ok ? d : { error: d.motivo }; })
+      .catch((e) => { estado.conta = { error: `No se ha podido leer: ${e.message}` }; })
+      .finally(() => { estado.contaCargando = false; estado.cargando = null; dibujar(); });
+  }
+  return estado.conta;
+}
+
+const PIL_GEN = { OK: ['ok', 'Fichero OK'], REVISAR: ['ojo', 'Fichero con avisos'], ERROR: ['mal', 'Fichero con error'] };
+const fecha = (iso) => { const d = new Date(iso); return `${dosCifras(d.getDate())}/${dosCifras(d.getMonth() + 1)}`; };
+
+function pildorasConta(f) {
+  if (f.paso === PASO.FUERA) return '<span class="pil">Fuera de Quantum</span>';
+  const p = [];
+  if (f.porGenerar) p.push('<span class="pil ojo">Por generar</span>');
+  else if (f.generado) { const [t, txt] = PIL_GEN[f.generado]; p.push(`<span class="pil ${t}">${txt}</span>`); }
+  if (f.importado) p.push(`<span class="pil ok">Importado ${fecha(f.importado.cuando)}</span>`);
+  const c = f.cuadre.estado;
+  if (c === 'ok') p.push('<span class="pil ok">Cuadra con RLC</span>');
+  else if (c === 'descuadre' || c === 'sin-rlc') p.push('<span class="pil mal">Descuadre RLC</span>');
+  if (f.revisado) p.push(`<span class="pil ok">Revisado ${fecha(f.revisado.cuando)}</span>`);
+  return p.join('');
+}
+
+function filaConta(f) {
+  const abierto = estado.contaAbiertos.has(f.clave);
+  const ocupado = estado.guardando === f.clave;
+  const puedeImportar = !f.porGenerar && (f.generado === 'OK' || f.generado === 'REVISAR');
+  const botones = f.paso === PASO.FUERA ? '' : `<div class="botones">
+      ${f.importado
+    ? `<button class="b" data-accion="conta-marca" data-id="${esc(f.clave)}" data-que="importado-no" ${ocupado ? 'disabled' : ''}>Deshacer «importado»</button>`
+    : `<button class="b prim" data-accion="conta-marca" data-id="${esc(f.clave)}" data-que="importado" ${puedeImportar && !ocupado ? '' : 'disabled'}>Marcar importado en Quantum</button>`}
+      ${f.importado ? (f.revisado
+    ? `<button class="b" data-accion="conta-marca" data-id="${esc(f.clave)}" data-que="revisado-no" ${ocupado ? 'disabled' : ''}>Deshacer «revisado»</button>`
+    : `<button class="b ${f.paso === PASO.REVISAR ? 'prim' : ''}" data-accion="conta-marca" data-id="${esc(f.clave)}" data-que="revisado" ${ocupado ? 'disabled' : ''}>Marcar mayores revisados</button>`) : ''}
+    </div>`;
+  const inc = (lista, clase) => lista.map((x) => `<p class="${clase}">${x.trabajador ? `<strong>${esc(x.trabajador)}</strong>: ` : ''}${esc(x.detalle)}</p>`).join('');
+  const detalle = abierto ? `<div class="detalle">
+      <ul class="ficheros">${f.ficheros.map((x) => `<li><span class="eti">Costes</span> <code>${esc(x)}</code></li>`).join('')}
+        ${f.salidas.map((x) => `<li><span class="eti">Importar</span> <code>${esc(x)}</code></li>`).join('')}</ul>
+      ${f.generado ? `<p class="linea tenue">${plural(f.trabajadores, 'trabajador', 'trabajadores')} · bruto ${formatoEuros(f.bruto)} · líquido ${formatoEuros(f.liquido)} · liquidación SS ${formatoEuros(f.liqSS)}</p>` : ''}
+      ${f.cuadre.rlc !== undefined ? `<p class="linea tenue">RLC ${formatoEuros(f.cuadre.rlc)} · diferencia ${formatoEuros(f.cuadre.dif)}</p>` : ''}
+      ${inc(f.errores, 'error')}${inc(f.revisar, 'nota')}
+      ${f.info.length ? `<details><summary class="tenue">${plural(f.info.length, 'nota informativa', 'notas informativas')}</summary>${inc(f.info, 'tenue')}</details>` : ''}
+      ${f.importado ? `<p class="linea tenue">Importado el ${fecha(f.importado.cuando)} por ${esc(f.importado.quien)}</p>` : ''}
+      ${f.revisado ? `<p class="linea tenue">Mayores revisados el ${fecha(f.revisado.cuando)} por ${esc(f.revisado.quien)}</p>` : ''}
+      ${botones}
+    </div>` : '';
+  return `<li class="cli">
+    <div class="cab">
+      <button class="nombre" data-accion="conta-abrir" data-id="${esc(f.clave)}" aria-expanded="${abierto}">
+        <span class="alias">${esc(f.nombre)}</span>
+        <span class="correo">${esc(f.nif || 'sin NIF')} · ${esc(textoPaso(f))}</span>
+      </button>
+      <div class="lado">${pildorasConta(f)}</div>
+    </div>${detalle}</li>`;
+}
+
+function dibujarContabilidad() {
+  const cabecera = cabeceraHtml(null);
+  const app = document.getElementById('app');
+  const d = datosConta();
+  if (estado.cargando || !d) { app.innerHTML = `${cabecera}<p class="cargando" role="status">${esc(estado.cargando ?? 'Leyendo la contabilidad del mes…')}</p>`; return; }
+  if (d.error) { app.innerHTML = `${cabecera}<p class="error" role="alert">${esc(d.error)}</p>`; return; }
+  const t = tablero(d);
+  const grupo = (pasos) => t.filas.filter((f) => pasos.includes(f.paso));
+  const lista = (fs) => `<ul class="lista">${fs.map(filaConta).join('')}</ul>`;
+  const atencion = grupo([PASO.ERROR, PASO.DESCUADRE, PASO.GENERAR]);
+  const tiles = [
+    ['#c-atencion', t.cuentas.atencion, 'Requieren tu atención', t.cuentas.atencion ? 'mal' : ''],
+    ['#c-importar', t.cuentas.importar, 'Por importar', t.cuentas.importar ? 'ojo' : ''],
+    ['#c-cuadrar', t.cuentas.cuadrar, 'Pendientes del RLC', ''],
+    ['#c-revisar', t.cuentas.revisar, 'Por revisar mayores', t.cuentas.revisar ? 'ojo' : ''],
+    ['#c-cerradas', t.cuentas.cerradas, 'Cerradas', 'ok'],
+  ].map(([h, n, txt, tono]) => `<a class="tile ${tono}" href="${h}"><span class="n">${n}</span><span class="t">${txt}</span></a>`).join('');
+  const sinRlc = t.rlcSinExcel.map((x) => `<p class="nota">RLC sin Excel de costes: <strong>${esc(x.razon)}</strong>. ${esc(x.detalle)}</p>`).join('');
+  const avisoControl = !t.hayControl && t.filas.length
+    ? '<p class="nota">Todavía no se han generado los ficheros de importación de este mes. Pídeselo a Claude en el proyecto Laboral.</p>' : '';
+  app.innerHTML = `${cabecera}
+    ${estado.aviso ? `<p class="hecho" role="status">${esc(estado.aviso)}</p>` : ''}
+    ${t.filas.length ? `<nav class="tiles cinco" aria-label="Resumen">${tiles}</nav>` : '<p class="vacio">No hay Excel de costes en la carpeta de este mes.</p>'}
+    ${avisoControl}
+    ${atencion.length || sinRlc ? seccion('c-atencion', 'Requieren tu atención', atencion.length + t.rlcSinExcel.length, `${sinRlc}${atencion.length ? lista(atencion) : ''}`,
+    { tono: 'atencion', ayuda: 'No se importan hasta resolverlo. Los ficheros por generar los prepara Claude con el script.' }) : ''}
+    ${seccion('c-importar', 'Por importar en Quantum', t.cuentas.importar, t.cuentas.importar ? lista(grupo([PASO.IMPORTAR])) : '<p class="vacio">Nada pendiente de importar.</p>',
+    { ayuda: 'Los ficheros están en IMPORTAR QUANTUM. Cuando lo importes, márcalo aquí.' })}
+    ${seccion('c-cuadrar', 'Pendientes de cuadrar con el RLC', t.cuentas.cuadrar, t.cuentas.cuadrar ? lista(grupo([PASO.CUADRAR])) : '<p class="vacio">Nada pendiente.</p>',
+    { ayuda: 'Importadas. El RLC de este mes llega a mes vencido: entonces Claude pasa el cuadre y se actualiza solo.' })}
+    ${seccion('c-revisar', 'Por revisar los mayores', t.cuentas.revisar, t.cuentas.revisar ? lista(grupo([PASO.REVISAR])) : '<p class="vacio">Nada pendiente.</p>',
+    { ayuda: 'Cuadran con el RLC. Falta comprobar los mayores (640, 642, 476, 4751, 465…).' })}
+    <details id="c-cerradas" class="sec plegada"><summary>Cerradas (${t.cuentas.cerradas})</summary>${t.cuentas.cerradas ? lista(grupo([PASO.CERRADA])) : '<p class="vacio">Ninguna todavía.</p>'}</details>
+    ${t.cuentas.fuera ? `<details class="sec plegada"><summary>No se llevan en Quantum (${t.cuentas.fuera})</summary>
+      <p class="ayuda">Personas físicas o empresas sin trabajadores en la tabla de Quantum. Si alguna sí se lleva en Quantum, hay que completar la tabla de trabajadores.</p>${lista(grupo([PASO.FUERA]))}</details>` : ''}
+    <footer class="pie">Carpeta: <code>Nóminas/${dosCifras(estado.mes)}${estado.anio}/IMPORTAR QUANTUM</code></footer>`;
+}
+
+async function accionConta(accion, clave, que) {
+  if (accion === 'conta-abrir') {
+    estado.contaAbiertos.has(clave) ? estado.contaAbiertos.delete(clave) : estado.contaAbiertos.add(clave);
+    dibujar(); return;
+  }
+  if (accion !== 'conta-marca' || !estado.conta || estado.guardando) return;
+  const valor = !que.endsWith('-no');
+  const tipo = que.replace(/-no$/, '');
+  const quien = estado.usuario?.correo ?? 'demostración';
+  estado.aviso = null;
+  if (estado.modo !== 'real') {
+    estado.conta.guardado = marcar(estado.conta.guardado, clave, tipo, valor, { quien });
+    dibujar(); return;
+  }
+  estado.guardando = clave; dibujar();
+  try {
+    const r = await guardarMarca(estado.mes, estado.anio, clave, tipo, valor, quien);
+    estado.conta.guardado = r.guardado; estado.conta.etag = r.etag;
+  } catch (e) {
+    estado.aviso = null;
+    estado.conta = { ...estado.conta };
+    alertaConta(`No se ha podido guardar en OneDrive: ${e.message}. No se ha marcado nada.`);
+  }
+  estado.guardando = null; dibujar();
+}
+
+function alertaConta(texto) { estado.avisosCarga = [texto]; }
+
 function dibujarContenido() {
+  if (estado.vista === 'contabilidad') { dibujarContabilidad(); return; }
   const { r, erroresMaestro } = calcular();
   const seleccion = r.listos.filter((c) => !estado.excluidos.has(c.id));
   const porDividir = r.clientes.filter((c) => c.porDividir && c.estado === 'PENDIENTE');
@@ -302,29 +477,7 @@ function dibujarContenido() {
       : '<p class="vacio">No hay ningún cliente listo para enviar.</p>';
   }
 
-  const real = estado.modo === 'real';
-  const anios = [estado.anio - 1, estado.anio, estado.anio + 1];
-  const sesion = real
-    ? `<div class="sesion"><span class="tenue">${esc(estado.usuario?.correo ?? '')}</span>
-        <label class="oculto" for="sel-mes">Mes</label>
-        <select id="sel-mes">${MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === estado.mes ? 'selected' : ''}>${m[0]}${m.slice(1).toLowerCase()}</option>`).join('')}</select>
-        <label class="oculto" for="sel-anio">Año</label>
-        <select id="sel-anio">${anios.map((a) => `<option ${a === estado.anio ? 'selected' : ''}>${a}</option>`).join('')}</select>
-        <button class="b" data-accion="cargar">Cargar mes</button>
-        <button class="b" data-accion="salir">Cerrar sesión</button></div>`
-    : `<div class="sesion"><button class="b prim" data-accion="entrar" ${estado.sesionDisponible ? '' : 'disabled'}>Iniciar sesión con Microsoft</button></div>`;
-  const cabecera = `
-    <header class="top">
-      <div><p class="marca">PROTINCAL · Laboral</p><h1>Envío de nóminas</h1></div>
-      <div class="periodo"><span class="mes">${MESES[estado.mes - 1]} ${estado.anio}</span>
-        <span class="tenue">Seguros sociales de ${dosCifras(ss.mes)}/${ss.anio}</span></div>
-    </header>
-    ${sesion}
-    ${real
-      ? '<p class="demo" role="note">Versión de prueba: lee tus carpetas y tu correo. Todavía no envía correos ni modifica el maestro. Solo divide los seguros sociales y las nóminas, y únicamente cuando lo confirmas.</p>'
-      : '<p class="demo" role="note">Demostración con datos inventados. Inicia sesión para ver tus carpetas reales.</p>'}
-    ${estado.errorCarga ? `<p class="error" role="alert">${esc(estado.errorCarga)}</p>` : ''}
-    ${estado.avisosCarga.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}`;
+  const cabecera = cabeceraHtml(ss);
   if (estado.cargando) {
     document.getElementById('app').innerHTML = `${cabecera}<p class="cargando" role="status">${esc(estado.cargando)}</p>`;
     return;
@@ -361,6 +514,7 @@ function bloquearCambios() {
 async function cargar(mes, anio, { probarAnterior = false } = {}) {
   estado.ss = null;
   estado.div = null;
+  estado.conta = null; estado.contaAbiertos = new Set();
   estado.conjuntosSS = null;
   estado.errorCarga = null; estado.avisosCarga = []; estado.aviso = null; estado.confirmando = false;
   estado.mes = mes; estado.anio = anio;
@@ -421,6 +575,8 @@ document.addEventListener('click', (ev) => {
   const { accion, id } = el.dataset;
   if (accion && accion.startsWith('ss-')) { accionSS(accion); return; }
   if (accion && accion.startsWith('div-')) { accionDivision(accion, id); return; }
+  if (accion === 'vista') { estado.vista = id; estado.aviso = null; dibujar(); window.scrollTo(0, 0); return; }
+  if (accion && accion.startsWith('conta-')) { accionConta(accion, id, el.dataset.que); return; }
   if (accion === 'entrar') { graph.entrar(); return; }
   if (accion === 'salir') { graph.salir(); return; }
   if (accion === 'cargar') {

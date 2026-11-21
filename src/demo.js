@@ -54,4 +54,47 @@ export const demo = {
   // Lo que saldría al dividir cada PDF conjunto (en la app real se lee del propio PDF).
   trabajadores: { 'ingenieria delta nom 11.pdf': ['MARTA GIL SANZ', 'PABLO ROCA LIMA'] },
   enviados: [{ id: 'gimnasio vega', cuando: '18/11/2026 09:12' }],
+  // Tablero de contabilidad (inventado): hojas del CONTROL tal como las escribe el script.
+  contabilidad: {
+    costes: ['panaderia luna', 'talleres sol', 'optica norte', 'clinica norte', 'reformas pico', 'gimnasio vega', 'estudio rio', 'ferreteria mar']
+      .map((n) => ({ nombre: `${n} costes 11.xlt`, modificado: 500 })),
+    control: {
+      Resumen: [
+        ['Fichero origen', 'Cód. empresa', 'NIF', 'Razón social', 'Estado', 'Fichero importación', 'Trabajadores', 'Total bruto', 'Total líquido', 'Total liquidación SS'],
+        ['panaderia luna costes 11.xlt', '101', 'B00000001', 'PANADERIA LUNA S.L.', 'OK', 'panaderia luna importar 11.xlsx', 4, 7200, 5900, 2350.4],
+        ['talleres sol costes 11.xlt', '102', 'B00000002', 'TALLERES SOL S.L.', 'REVISAR', 'talleres sol importar 11.xlsx', 6, 11800, 9400, 3900.1],
+        ['optica norte costes 11.xlt', '103', 'B00000003', 'OPTICA NORTE S.L.', 'OK', 'optica norte importar 11.xlsx', 2, 3900, 3200, 1210],
+        ['clinica norte costes 11.xlt', '104', 'B00000004', 'CLINICA NORTE S.L.', 'OK', 'clinica norte importar 11.xlsx', 3, 6100, 4900, 1980.5],
+        ['reformas pico costes 11.xlt', '105', 'B00000005', 'REFORMAS PICO S.L.', 'ERROR', 'reformas pico importar 11.xlsx', 5, 9800, 8100, 3100],
+        ['gimnasio vega costes 11.xlt', '106', 'B00000006', 'GIMNASIO VEGA S.L.', 'OK', 'gimnasio vega importar 11.xlsx', 3, 4500, 3800, 1400],
+        ['estudio rio costes 11.xlt', '107', 'B00000007', 'ESTUDIO RIO S.L.', 'OK', 'estudio rio importar 11.xlsx', 2, 5200, 4000, 1650],
+        ['ferreteria mar costes 11.xlt', '108', '00000008T', 'MARTIN MAR LUIS', 'ERROR', 'ferreteria mar importar 11.xlsx', 1, 1300, 1150, 420],
+      ],
+      Incidencias: [
+        ['Fichero', 'Nivel', 'Cód. trabajador', 'Trabajador', 'Detalle'],
+        ['talleres sol costes 11.xlt', 'REVISAR', '4', 'ROCA LIMA, PABLO', 'Prestaciones IT pago delegado 812.40 restadas del coste SS empresa (criterio histórico)'],
+        ['reformas pico costes 11.xlt', 'ERROR', '9', 'SANZ GIL, EVA', 'Trabajador sin ficha identificable en Quantum (sin coincidencia): darlo de alta o completar la tabla de trabajadores'],
+        ['ferreteria mar costes 11.xlt', 'ERROR', '', '', 'NIF 00000008T sin trabajadores en la tabla de Quantum: completar la tabla (o la empresa no está en Quantum)'],
+        ['panaderia luna costes 11.xlt', 'INFO', '3', 'LUZ PAZ, MAR', 'Código nóminas 3 → código Quantum 5 (LUZ PAZ, MAR)'],
+      ],
+    },
+    cuadre: {
+      Resumen: [
+        ['Fichero origen', 'Cód. empresa', 'NIF', 'Razón social', 'Estado', 'Fichero importación', 'Trabajadores', 'Total bruto', 'Total líquido', 'Total liquidación SS', 'Total RLC (NIF)', 'Dif. RLC (NIF)'],
+        ['optica norte costes 11.xlt', '103', 'B00000003', 'OPTICA NORTE S.L.', 'OK', 'x', 2, 3900, 3200, 1210, 1210.01, -0.01],
+        ['clinica norte costes 11.xlt', '104', 'B00000004', 'CLINICA NORTE S.L.', 'ERROR', 'x', 3, 6100, 4900, 1980.5, 1940.5, 40],
+        ['estudio rio costes 11.xlt', '107', 'B00000007', 'ESTUDIO RIO S.L.', 'OK', 'x', 2, 5200, 4000, 1650, 1650, 0],
+      ],
+      Incidencias: [['Fichero', 'Nivel', 'Cód. trabajador', 'Trabajador', 'Detalle']],
+    },
+    guardado: {
+      version: 1, mes: 11, anio: 2026,
+      empresas: {
+        B00000003: { importado: { cuando: '2026-11-24T09:12:00Z', quien: 'demostración' } },
+        B00000004: { importado: { cuando: '2026-11-24T09:20:00Z', quien: 'demostración' } },
+        B00000006: { importado: { cuando: '2026-11-24T09:31:00Z', quien: 'demostración' } },
+        B00000007: { importado: { cuando: '2026-11-24T09:40:00Z', quien: 'demostración' }, revisado: { cuando: '2026-12-09T11:00:00Z', quien: 'demostración' } },
+      },
+    },
+  },
 };

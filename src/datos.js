@@ -5,6 +5,7 @@ import { analizarPaginaSS, planSS, cortarSS } from './seguros.js';
 import { analizarPagina, leerPaginas, dividirPdf } from './dividir.js';
 import * as graph from './graph.js';
 import { leerXlsx } from './xlsx.js';
+import { RUTAS, esExcelCostes, leerControl, estadoVacio, marcar } from './contabilidad.js';
 
 let pdfjs = null;
 async function cargarPdfjs() {
@@ -231,4 +232,46 @@ export async function ejecutarDivision(prep, avisar = () => {}) {
   const faltan = subidos.filter((n) => !ahora.has(n.toLowerCase()));
   if (faltan.length) throw new Error(`No aparecen en OneDrive: ${faltan.join(', ')}`);
   return { subidos };
+}
+
+/** Lee todo lo del tablero de contabilidad de un mes. No escribe nada. */
+export async function cargarContabilidad(mes, anio, avisar = () => {}) {
+  const r = RUTAS(mes, anio);
+  const base = await graph.carpetaBase();
+  avisar(`Leyendo ${r.carpeta}…`);
+  const [raiz, importar, cuadre] = await Promise.all([
+    graph.listar(base, r.carpeta), graph.listar(base, r.importar), graph.listar(base, r.cuadre)]);
+  if (!raiz) return { ok: false, motivo: `No existe la carpeta ${r.carpeta}` };
+  const costes = raiz.filter((f) => !f.esCarpeta && esExcelCostes(f.nombre)).map((f) => ({ nombre: f.nombre, modificado: f.modificado }));
+  const leer = async (lista) => {
+    const f = (lista ?? []).find((x) => !x.esCarpeta && x.nombre.toLowerCase() === r.control.toLowerCase());
+    if (!f) return null;
+    const c = leerControl(await leerXlsx(await graph.descargar(f)));
+    return { ...c, modificado: f.modificado };
+  };
+  avisar('Leyendo el control de importación…');
+  const [control, controlCuadre] = await Promise.all([leer(importar), leer(cuadre)]);
+  const { datos, etag } = importar ? await graph.leerJson(base, `${r.importar}/${r.estado}`) : { datos: null, etag: null };
+  return { ok: true, mes, anio, costes, control, cuadre: controlCuadre, guardado: datos ?? estadoVacio(mes, anio), etag, hayImportar: Boolean(importar) };
+}
+
+/**
+ * Marca o desmarca "importado" / "revisado" y lo guarda en OneDrive.
+ * Si otra persona ha guardado entretanto, se relee y se vuelve a aplicar la marca encima (una vez).
+ */
+export async function guardarMarca(mes, anio, clave, que, valor, quien) {
+  const r = RUTAS(mes, anio);
+  const base = await graph.carpetaBase();
+  const ruta = `${r.importar}/${r.estado}`;
+  for (let intento = 0; intento < 2; intento++) {
+    const { datos, etag } = await graph.leerJson(base, ruta);
+    const nuevo = marcar(datos ?? estadoVacio(mes, anio), clave, que, valor, { quien });
+    try {
+      const etagNuevo = await graph.guardarJson(base, ruta, nuevo, etag);
+      return { guardado: nuevo, etag: etagNuevo };
+    } catch (e) {
+      if (!(e instanceof graph.ErrorGraph) || ![409, 412].includes(e.estado) || intento === 1) throw e;
+    }
+  }
+  throw new Error('No se ha podido guardar');
 }

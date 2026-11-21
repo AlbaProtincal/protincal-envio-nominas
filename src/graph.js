@@ -1,5 +1,5 @@
 // Conexión con Microsoft 365 (Microsoft Graph): inicio de sesión, OneDrive, Excel y correo.
-// Esta versión solo LEE. No escribe ficheros, no modifica el maestro y no envía correos.
+// Escribe solo lo que la app confirma: PDF nuevos (sin sobrescribir), carpetas y el estado de contabilidad.
 import { CONFIG } from './config.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
@@ -45,8 +45,8 @@ export class ErrorGraph extends Error {
   constructor(estado, mensaje) { super(mensaje); this.estado = estado; }
 }
 
-async function pedir(url, { metodo = 'GET', cuerpo, tipo } = {}) {
-  const cabeceras = { Authorization: `Bearer ${await token()}` };
+async function pedir(url, { metodo = 'GET', cuerpo, tipo, extra = {} } = {}) {
+  const cabeceras = { Authorization: `Bearer ${await token()}`, ...extra };
   let body;
   if (cuerpo instanceof Uint8Array) { body = cuerpo; cabeceras['Content-Type'] = tipo ?? 'application/octet-stream'; }
   else if (cuerpo !== undefined) { body = JSON.stringify(cuerpo); cabeceras['Content-Type'] = 'application/json'; }
@@ -152,4 +152,33 @@ export async function enviadosDesde(fechaIso, maximo = 5000) {
     url = pag['@odata.nextLink'] ?? null;
   }
   return salida;
+}
+
+/**
+ * Lee un JSON de OneDrive junto con su eTag (para guardar sin pisar cambios de otro).
+ * @returns {{ datos: object|null, etag: string|null }}  datos null si no existe
+ */
+export async function leerJson(base, subruta) {
+  let it;
+  try {
+    it = await pedir(`/drives/${base.drive}/items/${base.id}:/${ruta(subruta)}`);
+  } catch (e) {
+    if (e instanceof ErrorGraph && e.estado === 404) return { datos: null, etag: null };
+    throw e;
+  }
+  const r = await fetch(it['@microsoft.graph.downloadUrl']);
+  if (!r.ok) throw new Error(`No se pudo leer ${subruta} (${r.status})`);
+  return { datos: await r.json(), etag: it.eTag };
+}
+
+/**
+ * Guarda un JSON en OneDrive. Con etag, solo si nadie lo ha cambiado desde que se leyó (si no, error 412).
+ * Sin etag, solo si no existe todavía.
+ */
+export async function guardarJson(base, subruta, datos, etag) {
+  const bytes = new TextEncoder().encode(JSON.stringify(datos, null, 2));
+  const url = `/drives/${base.drive}/items/${base.id}:/${ruta(subruta)}:/content` +
+    (etag ? '' : '?@microsoft.graph.conflictBehavior=fail');
+  const it = await pedir(url, { metodo: 'PUT', cuerpo: bytes, tipo: 'application/json', extra: etag ? { 'If-Match': etag } : {} });
+  return it.eTag;
 }
