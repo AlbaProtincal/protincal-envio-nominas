@@ -283,12 +283,14 @@ const fecha = (iso) => { const d = new Date(iso); return `${dosCifras(d.getDate(
 
 function pildorasConta(f) {
   if (f.paso === PASO.FUERA) return '<span class="pil">Fuera de Quantum</span>';
+  if (f.descartada) return '<span class="pil">Sin importar</span>';
   const p = [];
   if (f.porGenerar) p.push('<span class="pil ojo">Por generar</span>');
   else if (f.generado) { const [t, txt] = PIL_GEN[f.generado]; p.push(`<span class="pil ${t}">${txt}</span>`); }
   if (f.importado) p.push(`<span class="pil ok">Importado ${fecha(f.importado.cuando)}</span>`);
   const c = f.cuadre.estado;
   if (c === 'ok') p.push('<span class="pil ok">Cuadra con RLC</span>');
+  else if (c === 'corregido') p.push('<span class="pil ok">Corregido al RLC</span>');
   else if (c === 'descuadre' || c === 'sin-rlc') p.push('<span class="pil mal">Descuadre RLC</span>');
   if (f.revisado) p.push(`<span class="pil ok">Revisado ${fecha(f.revisado.cuando)}</span>`);
   return p.join('');
@@ -312,6 +314,7 @@ function filaConta(f) {
         ${f.salidas.map((x) => `<li><span class="eti">Importar</span> <code>${esc(x)}</code></li>`).join('')}</ul>
       ${f.generado ? `<p class="linea tenue">${plural(f.trabajadores, 'trabajador', 'trabajadores')} · bruto ${formatoEuros(f.bruto)} · líquido ${formatoEuros(f.liquido)} · liquidación SS ${formatoEuros(f.liqSS)}</p>` : ''}
       ${f.cuadre.rlc !== undefined ? `<p class="linea tenue">RLC ${formatoEuros(f.cuadre.rlc)} · diferencia ${formatoEuros(f.cuadre.dif)}</p>` : ''}
+      ${f.cuadre.estado === 'corregido' ? `<p class="linea tenue">Corregido en Quantum para que coincida con el RLC${f.cuadre.nota ? `: ${esc(f.cuadre.nota)}` : ''}</p>` : ''}
       ${inc(f.errores, 'error')}${inc(f.revisar, 'nota')}
       ${f.info.length ? `<details><summary class="tenue">${plural(f.info.length, 'nota informativa', 'notas informativas')}</summary>${inc(f.info, 'tenue')}</details>` : ''}
       ${f.importado ? `<p class="linea tenue">Importado el ${fecha(f.importado.cuando)} por ${esc(f.importado.quien)}</p>` : ''}

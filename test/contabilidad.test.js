@@ -119,3 +119,18 @@ test('una empresa con ERROR que ya se importó sigue su curso', () => {
   const t = tablero({ costes, control, guardado: g });
   assert.equal(fila(t, 'B33333333').paso, PASO.CUADRAR);
 });
+
+test('descuadre ya corregido en Quantum y empresa cerrada sin importar', () => {
+  const g = estadoVacio(11, 2026);
+  g.empresas.B22222222 = { importado: { cuando: 'x', quien: 'a' }, cuadreCorregido: { cuando: 'x', quien: 'claude', nota: 'coste SS al RLC' } };
+  g.empresas.B33333333 = { descartada: { cuando: 'x', quien: 'claude', motivo: 'ya no es cliente' } };
+  const cuadre = leerControl({
+    Resumen: [CAB_RLC, ['sol costes 11.xlt', '2', 'B22222222', 'TALLERES SOL SL', 'ERROR', 'x', 3, 5000, 4000, 1500, 1450, 50]],
+    Incidencias: [CABI],
+  });
+  const t = tablero({ costes, control, cuadre, guardado: g });
+  assert.equal(fila(t, 'B22222222').cuadre.estado, 'corregido');
+  assert.equal(fila(t, 'B22222222').paso, PASO.REVISAR);
+  assert.equal(fila(t, 'B33333333').paso, PASO.CERRADA);
+  assert.match(textoPaso(fila(t, 'B33333333')), /sin importar: ya no es cliente/);
+});

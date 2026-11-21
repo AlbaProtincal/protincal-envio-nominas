@@ -137,7 +137,10 @@ export function tablero({ costes = [], control = null, cuadre = null, guardado =
 
     let cuadreRLC = { estado: 'pendiente' };
     const c = e.nif ? cuadrePorNif.get(e.nif) : null;
-    if (c) {
+    if (m.cuadreCorregido) {
+      // El descuadre del Excel ya se ha corregido en Quantum para que coincida con el RLC.
+      cuadreRLC = { estado: 'corregido', rlc: c?.rlc, dif: c?.dif, nota: m.cuadreCorregido.nota ?? '' };
+    } else if (c) {
       if (c.rlc === null || c.rlc === undefined) cuadreRLC = (c.liqSS ?? 0) ? { estado: 'sin-rlc' } : { estado: 'no-aplica' };
       else cuadreRLC = Math.abs(c.dif ?? 0) <= TOLERANCIA_RLC
         ? { estado: 'ok', rlc: c.rlc, dif: c.dif } : { estado: 'descuadre', rlc: c.rlc, dif: c.dif };
@@ -146,12 +149,13 @@ export function tablero({ costes = [], control = null, cuadre = null, guardado =
     }
 
     let paso;
-    if (fuera) paso = PASO.FUERA;
+    if (m.descartada) paso = PASO.CERRADA;
+    else if (fuera) paso = PASO.FUERA;
     else if (e.porGenerar) paso = PASO.GENERAR;
     else if (generado === 'ERROR' && !m.importado) paso = PASO.ERROR;
     else if (!m.importado) paso = PASO.IMPORTAR;
     else if (cuadreRLC.estado === 'descuadre' || cuadreRLC.estado === 'sin-rlc') paso = PASO.DESCUADRE;
-    else if (cuadreRLC.estado !== 'ok' && cuadreRLC.estado !== 'no-aplica') paso = PASO.CUADRAR;
+    else if (!['ok', 'no-aplica', 'corregido'].includes(cuadreRLC.estado)) paso = PASO.CUADRAR;
     else if (!m.revisado) paso = PASO.REVISAR;
     else paso = PASO.CERRADA;
 
@@ -161,6 +165,7 @@ export function tablero({ costes = [], control = null, cuadre = null, guardado =
       errores, revisar, info: e.incidencias.filter((x) => x.nivel === 'INFO'),
       trabajadores: e.trabajadores, bruto: redondea(e.bruto), liquido: redondea(e.liquido), liqSS: redondea(e.liqSS),
       importado: m.importado ?? null, revisado: m.revisado ?? null, nota: m.nota ?? '',
+      descartada: m.descartada ?? null,
       cuadre: cuadreRLC,
     };
   });
@@ -209,7 +214,7 @@ export function textoPaso(f) {
     case PASO.DESCUADRE: return f.cuadre.estado === 'sin-rlc' ? 'Tiene coste de SS pero no aparece en el RLC'
       : `Descuadre con el RLC: ${formatoEuros(f.cuadre.dif)}`;
     case PASO.REVISAR: return 'Revisar los mayores';
-    default: return 'Cerrada';
+    default: return f.descartada ? `Cerrada sin importar${f.descartada.motivo ? `: ${f.descartada.motivo}` : ''}` : 'Cerrada';
   }
 }
 
