@@ -5,7 +5,7 @@ import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js';
 import { demo } from './demo.js';
 import { cuerpoHtml } from './correo.js';
 import * as graph from './graph.js';
-import { cargarMes, prepararSS, ejecutarSS } from './datos.js';
+import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision } from './datos.js';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -23,6 +23,7 @@ const estado = {
   avisosCarga: [],
   // División de los seguros sociales conjuntos: null | { prep } | { error }
   ss: null,
+  div: null, // división de una nómina en curso: { id, prep } o { id, error }
   conjuntosSS: null, // en modo real, los PDF conjuntos encontrados al cargar el mes
   excluidos: new Set(),
   abiertos: new Set(),
@@ -144,6 +145,53 @@ function bloqueSS(conjuntos) {
     <div class="botones"><button class="b" data-accion="ss-cancelar">Cancelar</button></div>`;
 }
 
+function bloqueDivision() {
+  const d = estado.div;
+  if (d.error) {
+    return `<div class="plan"><p class="error" role="alert">${esc(d.id)}: ${esc(d.error)}</p>
+      ${(d.errores ?? []).map((e) => `<p class="nota">${esc(e)}</p>`).join('')}
+      <div class="botones"><button class="b" data-accion="div-cancelar">Volver</button></div></div>`;
+  }
+  const p = d.prep;
+  return `<div class="plan"><p><strong>${esc(d.id)}</strong>: <code>${esc(p.origen)}</code> de ${esc(p.empresa)} (${esc(p.cif)})
+      se divide en ${plural(p.salidas.length, 'nómina individual', 'nóminas individuales')}:</p>
+    <ul class="ficheros suelto">${p.salidas.map((s) => `<li><code>${esc(s.nombre)}</code> <span class="tenue">${esc(s.dni)}</span></li>`).join('')}</ul>
+    <p class="ayuda">Se guardarán en la subcarpeta <code>${esc(p.destino)}</code>. La nómina conjunta no se borra ni se mueve, y no se
+      sobrescribe ningún fichero.${p.otrosEnDestino.length ? ` En esa carpeta ya hay: ${esc(p.otrosEnDestino.join(', '))}.` : ''}</p>
+    <div class="botones"><button class="b prim" data-accion="div-ejecutar">Dividir y guardar en OneDrive</button>
+      <button class="b" data-accion="div-cancelar">Cancelar</button></div></div>`;
+}
+
+async function accionDivision(accion, id) {
+  if (accion === 'div-cancelar') { estado.div = null; dibujar(); return; }
+  if (estado.modo !== 'real') return;
+  if (accion === 'div-preparar') {
+    const c = calcular().r.clientes.find((x) => x.id === id);
+    if (!c?.porDividir) return;
+    estado.cargando = `Leyendo la nómina de ${id}…`; dibujar();
+    try {
+      const prep = await prepararDivision(estado.mes, estado.anio, c.porDividir);
+      estado.div = prep.ok ? { id, prep } : { id, error: prep.motivo, errores: prep.errores };
+    } catch (e) { estado.div = { id, error: `No se ha podido preparar: ${e.message}` }; }
+    estado.cargando = null; dibujar();
+    return;
+  }
+  if (accion === 'div-ejecutar' && estado.div?.prep) {
+    const { id: quien, prep } = estado.div;
+    estado.cargando = `Dividiendo la nómina de ${quien}…`; dibujar();
+    try {
+      const r = await ejecutarDivision(prep, (t) => { estado.cargando = t; dibujar(); });
+      estado.div = null;
+      await cargar(estado.mes, estado.anio);
+      estado.aviso = `${quien}: ${plural(r.subidos.length, 'nómina individual guardada', 'nóminas individuales guardadas')} en ${prep.destino}.`;
+    } catch (e) {
+      estado.div = { id: quien, error: `Se ha detenido a mitad: ${e.message}. Revisa la carpeta ${prep.destino} antes de volver a intentarlo.` };
+      estado.cargando = null;
+    }
+    dibujar();
+  }
+}
+
 async function accionSS(accion) {
   if (accion === 'ss-cancelar') { estado.ss = null; dibujar(); return; }
   if (estado.modo !== 'real') return;
@@ -218,7 +266,10 @@ function dibujarContenido() {
   if (porDividir.length) {
     antes += `<div class="bloque"><h3>Nóminas por dividir</h3>
       <p class="ayuda">Estos clientes reciben una nómina por trabajador. Hay que dividir el PDF conjunto antes de enviar.</p>
-      <ul class="lista">${porDividir.map((c) => filaCliente(c, { extra: `<button class="b prim" data-accion="dividir" data-id="${esc(c.id)}">Dividir nómina</button>` })).join('')}</ul></div>`;
+      <ul class="lista">${porDividir.map((c) => filaCliente(c, { extra: estado.modo === 'real'
+        ? `<button class="b prim" data-accion="div-preparar" data-id="${esc(c.id)}">Revisar la división</button>`
+        : `<button class="b prim" data-accion="dividir" data-id="${esc(c.id)}">Dividir nómina</button>` })).join('')}</ul>
+      ${estado.div ? bloqueDivision() : ''}</div>`;
   }
   if (incidencias.length || erroresMaestro.length) {
     antes += `<div class="bloque"><h3>Incidencias</h3>
@@ -270,7 +321,7 @@ function dibujarContenido() {
     </header>
     ${sesion}
     ${real
-      ? '<p class="demo" role="note">Versión de prueba: lee tus carpetas y tu correo. Todavía no envía correos, no divide nóminas ni modifica el maestro. Solo divide los seguros sociales, y únicamente cuando lo confirmas.</p>'
+      ? '<p class="demo" role="note">Versión de prueba: lee tus carpetas y tu correo. Todavía no envía correos ni modifica el maestro. Solo divide los seguros sociales y las nóminas, y únicamente cuando lo confirmas.</p>'
       : '<p class="demo" role="note">Demostración con datos inventados. Inicia sesión para ver tus carpetas reales.</p>'}
     ${estado.errorCarga ? `<p class="error" role="alert">${esc(estado.errorCarga)}</p>` : ''}
     ${estado.avisosCarga.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}`;
@@ -309,6 +360,7 @@ function bloquearCambios() {
 
 async function cargar(mes, anio, { probarAnterior = false } = {}) {
   estado.ss = null;
+  estado.div = null;
   estado.conjuntosSS = null;
   estado.errorCarga = null; estado.avisosCarga = []; estado.aviso = null; estado.confirmando = false;
   estado.mes = mes; estado.anio = anio;
@@ -368,6 +420,7 @@ document.addEventListener('click', (ev) => {
   if (!el || el.tagName === 'FORM') return;
   const { accion, id } = el.dataset;
   if (accion && accion.startsWith('ss-')) { accionSS(accion); return; }
+  if (accion && accion.startsWith('div-')) { accionDivision(accion, id); return; }
   if (accion === 'entrar') { graph.entrar(); return; }
   if (accion === 'salir') { graph.salir(); return; }
   if (accion === 'cargar') {

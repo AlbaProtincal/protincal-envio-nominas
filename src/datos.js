@@ -2,7 +2,7 @@
 import { CONFIG } from './config.js';
 import { carpetasDelMes, dosCifras, palabras, pareceConjuntoSS, periodoSeguros } from './motor.js';
 import { analizarPaginaSS, planSS, cortarSS } from './seguros.js';
-import { analizarPagina, leerPaginas } from './dividir.js';
+import { analizarPagina, leerPaginas, dividirPdf } from './dividir.js';
 import * as graph from './graph.js';
 import { leerXlsx } from './xlsx.js';
 
@@ -189,4 +189,46 @@ export async function ejecutarSS(prep, avisar = () => {}) {
     movidos.push(c.clave);
   }
   return { subidos, movidos };
+}
+
+/**
+ * Prepara la división de la nómina conjunta de un cliente en nóminas individuales.
+ * Descarga el PDF, lee cada página y corta en memoria. No escribe nada en OneDrive.
+ * @param {{ origen: string, destino: string }} porDividir  Lo que propone el motor
+ */
+export async function prepararDivision(mes, anio, porDividir) {
+  const c = carpetasDelMes(mes, anio);
+  const base = await graph.carpetaBase();
+  const raiz = (await graph.listar(base, c.nominas)) ?? [];
+  const f = raiz.find((x) => !x.esCarpeta && x.nombre === porDividir.origen);
+  if (!f) return { ok: false, motivo: `No encuentro ${porDividir.origen} en ${c.nominas}` };
+  const yaHay = ((await graph.listar(base, `${c.nominas}/${porDividir.destino}`)) ?? []).filter((x) => !x.esCarpeta);
+  const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js');
+  const r = await dividirPdf(await graph.descargar(f), mes, anio, { pdfjs: await cargarPdfjs(), PDFDocument });
+  if (!r.ok) return { ok: false, motivo: 'No se puede dividir este PDF. No se ha tocado ningún fichero.', errores: r.errores };
+  const existentes = new Set(yaHay.map((x) => x.nombre.toLowerCase()));
+  const salidas = r.salidas.map((s) => ({ ...s, existe: existentes.has(s.nombre.toLowerCase()) }));
+  if (salidas.some((s) => s.existe)) {
+    return { ok: false, motivo: `La carpeta ${porDividir.destino} ya tiene nóminas con estos nombres. Revísala antes de dividir: ` +
+      salidas.filter((s) => s.existe).map((s) => s.nombre).join(' · ') };
+  }
+  return { ok: true, base, carpeta: c.nominas, destino: porDividir.destino, origen: porDividir.origen,
+    empresa: r.empresa, cif: r.cif, salidas, otrosEnDestino: yaHay.map((x) => x.nombre) };
+}
+
+/** Guarda las nóminas individuales en la subcarpeta del cliente. La conjunta se queda donde está. */
+export async function ejecutarDivision(prep, avisar = () => {}) {
+  const { base, carpeta, destino, salidas } = prep;
+  await graph.asegurarCarpeta(base, carpeta, destino);
+  const subidos = [];
+  for (const [i, s] of salidas.entries()) {
+    avisar(`Guardando ${destino}/${s.nombre} (${i + 1} de ${salidas.length})…`);
+    await graph.subir(base, `${carpeta}/${destino}`, s.nombre, s.bytes);
+    subidos.push(s.nombre);
+  }
+  // Comprobación: todo lo subido tiene que estar en la carpeta.
+  const ahora = new Set(((await graph.listar(base, `${carpeta}/${destino}`)) ?? []).map((x) => x.nombre.toLowerCase()));
+  const faltan = subidos.filter((n) => !ahora.has(n.toLowerCase()));
+  if (faltan.length) throw new Error(`No aparecen en OneDrive: ${faltan.join(', ')}`);
+  return { subidos };
 }
