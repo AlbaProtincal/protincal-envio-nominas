@@ -1,12 +1,12 @@
 // Pantalla del pre-chequeo. Dibuja lo que decide el motor; no decide nada por su cuenta.
 // De momento trabaja con datos de demostración: la lectura de OneDrive y el envío real
 // se conectan cuando la app esté registrada en Microsoft 365.
-import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwqacrug';
-import { demo } from './demo.js?v=mwqacrug';
-import { cuerpoHtml } from './correo.js?v=mwqacrug';
-import * as graph from './graph.js?v=mwqacrug';
-import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca } from './datos.js?v=mwqacrug';
-import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwqacrug';
+import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwsvmfty';
+import { demo } from './demo.js?v=mwsvmfty';
+import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwsvmfty';
+import * as graph from './graph.js?v=mwsvmfty';
+import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca } from './datos.js?v=mwsvmfty';
+import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwsvmfty';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -30,6 +30,9 @@ const estado = {
   contaCargando: false,
   contaAbiertos: new Set(),
   guardando: null, // clave de la empresa cuya marca se está guardando
+  modoPrueba: true, // envío real: todos los correos van a la cuenta de la sesión, con el destinatario real en el asunto
+  enviando: false,
+  informeEnvio: null, // [{ id, email, ok, detalle }] del último envío
   conjuntosSS: null, // en modo real, los PDF conjuntos encontrados al cargar el mes
   excluidos: new Set(),
   abiertos: new Set(),
@@ -196,6 +199,69 @@ async function accionDivision(accion, id) {
     }
     dibujar();
   }
+}
+
+// ---- Envío real por Microsoft Graph -----------------------------------------------------
+
+const nombreAdjunto = (a) => {
+  const base = a.ruta.split('/').pop();
+  return a.tipo === 'nomina' ? base : `${a.tipo.toUpperCase()} - ${base}`;
+};
+
+async function enviarReal() {
+  if (estado.enviando) return;
+  const { r } = calcular();
+  const sel = r.listos.filter((c) => !estado.excluidos.has(c.id));
+  if (!sel.length) return;
+  const prueba = estado.modoPrueba;
+  const yo = estado.usuario?.correo;
+  if (prueba && !yo) { estado.aviso = 'No sé cuál es tu buzón: vuelve a iniciar sesión.'; dibujar(); return; }
+  estado.enviando = true; estado.informeEnvio = []; estado.aviso = null;
+  const desde = new Date(Date.now() - 5 * 60000).toISOString();
+  const base = await graph.carpetaBase();
+  const logo = { bytes: new Uint8Array(await (await fetch('assets/logo-firma.jpg')).arrayBuffer()), cid: CID_LOGO };
+  const salidos = [];
+  for (const [i, c] of sel.entries()) {
+    estado.cargando = `${prueba ? 'Prueba: e' : 'E'}nviando ${i + 1} de ${sel.length}: ${c.id}…`; dibujar();
+    try {
+      const adjuntos = [];
+      for (const a of c.adjuntos) adjuntos.push({ nombre: nombreAdjunto(a), bytes: await graph.descargarPorId(base, a.id) });
+      const nombres = adjuntos.map((a) => a.nombre);
+      if (new Set(nombres).size !== nombres.length) throw new Error('Dos adjuntos con el mismo nombre');
+      const asunto = prueba ? `[PRUEBA para ${c.email}] ${c.asunto}` : c.asunto;
+      await graph.enviarCorreo({ para: prueba ? yo : c.email, asunto, html: cuerpoHtml(c.texto), adjuntos, logo });
+      salidos.push({ c, asunto, para: prueba ? yo : c.email, nombres });
+      estado.informeEnvio.push({ id: c.id, email: c.email, ok: true, detalle: `${plural(nombres.length, 'adjunto', 'adjuntos')}; comprobando en Enviados…` });
+    } catch (e) {
+      estado.informeEnvio.push({ id: c.id, email: c.email, ok: false, detalle: e.message });
+      // Se para al primer fallo: mejor revisar que seguir enviando a ciegas.
+      estado.aviso = `Se ha detenido en ${c.id}. Los anteriores sí han salido. Revisa el error antes de seguir.`;
+      break;
+    }
+  }
+  // Comprobación en Enviados: el correo existe, va a quien debe y lleva exactamente los adjuntos previstos.
+  estado.cargando = 'Comprobando en Enviados…'; dibujar();
+  await new Promise((res) => setTimeout(res, 4000));
+  for (const s of salidos) {
+    const fila = estado.informeEnvio.find((x) => x.id === s.c.id);
+    let vistos = null;
+    for (let intento = 0; intento < 3 && !vistos; intento++) {
+      try { vistos = await graph.buscarEnviado(s.asunto, s.para, desde); } catch { vistos = null; }
+      if (!vistos) await new Promise((res) => setTimeout(res, 3000));
+    }
+    if (!vistos) { fila.detalle = 'Enviado, pero todavía no aparece en Enviados: compruébalo en Outlook'; continue; }
+    const faltan = s.nombres.filter((n) => !vistos.includes(n));
+    fila.detalle = faltan.length ? `En Enviados faltan adjuntos: ${faltan.join(', ')}` : `Comprobado en Enviados con sus ${plural(s.nombres.length, 'adjunto', 'adjuntos')}`;
+    fila.ok = !faltan.length;
+  }
+  estado.enviando = false; estado.confirmando = false; estado.cargando = null;
+  const bien = estado.informeEnvio.filter((x) => x.ok).length;
+  if (!estado.aviso) {
+    estado.aviso = prueba ? `Prueba terminada: ${plural(bien, 'correo', 'correos')} en tu buzón. Revísalos; a los clientes no les ha llegado nada.`
+      : `${plural(bien, 'correo enviado', 'correos enviados')} a los clientes.`;
+  }
+  if (!prueba) { const av = estado.aviso; await cargar(estado.mes, estado.anio); estado.aviso = av; }
+  dibujar();
 }
 
 async function accionSS(accion) {
@@ -470,8 +536,13 @@ function dibujarContenido() {
       ${[...new Set(seleccion.map(textoCorreo))].map((t) => `<p class="eti">Así llega el correo <span class="tenue">(${plural(seleccion.filter((c) => textoCorreo(c) === t).length, 'correo', 'correos')})</span></p>
         <div class="vista">${cuerpoHtml(t, 'assets/logo-firma.jpg')}</div>`).join('')}
       <p class="tenue">Total: ${kb(total)}. Tras enviar se comprueba en Enviados que cada correo ha salido con sus adjuntos.</p>
-      <div class="botones"><button class="b prim" data-accion="enviar">Enviar ${plural(seleccion.length, 'correo', 'correos')}</button>
-      <button class="b" data-accion="cancelar">Volver</button></div></div>`;
+      ${estado.modo === 'real' ? `<label class="prueba"><input type="checkbox" data-accion="modo-prueba" ${estado.modoPrueba ? 'checked' : ''}>
+        <span><strong>Modo prueba:</strong> todos los correos llegan a ${esc(estado.usuario?.correo ?? 'tu buzón')}, con el destinatario real en el asunto. A los clientes no les llega nada.</span></label>` : ''}
+      <div class="botones"><button class="b prim ${estado.modo === 'real' && !estado.modoPrueba ? 'peligro' : ''}" data-accion="enviar" ${estado.enviando ? 'disabled' : ''}>${
+  estado.modo !== 'real' ? `Enviar ${plural(seleccion.length, 'correo', 'correos')}`
+    : estado.modoPrueba ? `Enviar ${plural(seleccion.length, 'correo', 'correos')} de prueba a mi buzón`
+      : `Enviar ${plural(seleccion.length, 'correo', 'correos')} a los clientes`}</button>
+      <button class="b" data-accion="cancelar" ${estado.enviando ? 'disabled' : ''}>Volver</button></div></div>`;
   } else {
     listos = r.listos.length
       ? `<ul class="lista">${r.listos.map((c) => filaCliente(c, { marcar: true })).join('')}</ul>
@@ -485,8 +556,12 @@ function dibujarContenido() {
     document.getElementById('app').innerHTML = `${cabecera}<p class="cargando" role="status">${esc(estado.cargando)}</p>`;
     return;
   }
+  const informe = estado.informeEnvio ? `<div class="bloque informe"><h3>Resultado del envío</h3><ul class="ficheros suelto">
+      ${estado.informeEnvio.map((x) => `<li><span class="pil ${x.ok ? 'ok' : 'mal'}">${x.ok ? 'Enviado' : 'No enviado'}</span> <strong>${esc(x.id)}</strong> <span class="tenue">${esc(x.email)} · ${esc(x.detalle)}</span></li>`).join('')}
+    </ul></div>` : '';
   document.getElementById('app').innerHTML = `${cabecera}
     ${estado.aviso ? `<p class="hecho" role="status">${esc(estado.aviso)}</p>` : ''}
+    ${informe}
     <nav class="tiles" aria-label="Resumen">${resumen}</nav>
     ${antes ? seccion('antes', 'Antes de enviar', bloqueos, antes, { tono: 'atencion' }) : ''}
     ${seccion('listos', 'Listos para enviar', r.listos.length, listos, { ayuda: 'Tienen todos sus documentos y todavía no se les ha enviado este mes.' })}
@@ -510,13 +585,14 @@ function dibujar() {
 /** En modo real (solo lectura) se desactiva todo lo que enviaría o modificaría algo. */
 function bloquearCambios() {
   if (estado.modo !== 'real') return;
-  const sel = '[data-accion="dividir"], [data-accion="enviar"], [data-accion="no-enviar"], form.nueva button, form.nueva input, form.nueva select';
+  const sel = '[data-accion="dividir"], [data-accion="no-enviar"], form.nueva button, form.nueva input, form.nueva select';
   document.querySelectorAll(sel).forEach((el) => { el.disabled = true; el.title = 'Desactivado en la versión de prueba'; });
 }
 
 async function cargar(mes, anio, { probarAnterior = false } = {}) {
   estado.ss = null;
   estado.div = null;
+  estado.confirmando = false;
   estado.conta = null; estado.contaAbiertos = new Set();
   estado.conjuntosSS = null;
   estado.errorCarga = null; estado.avisosCarga = []; estado.aviso = null; estado.confirmando = false;
@@ -587,11 +663,13 @@ document.addEventListener('click', (ev) => {
     return;
   }
   // Solo lectura: en modo real no se ejecuta nada que envíe o modifique.
-  if (estado.modo === 'real' && ['enviar', 'dividir', 'no-enviar'].includes(accion)) return;
+  if (accion === 'modo-prueba') { estado.modoPrueba = el.checked; dibujar(); return; }
+  if (estado.modo === 'real' && accion === 'enviar') { enviarReal(); return; }
+  if (estado.modo === 'real' && ['dividir', 'no-enviar'].includes(accion)) return;
   estado.aviso = null;
   if (accion === 'abrir') estado.abiertos.has(id) ? estado.abiertos.delete(id) : estado.abiertos.add(id);
   else if (accion === 'marcar') { el.checked ? estado.excluidos.delete(id) : estado.excluidos.add(id); }
-  else if (accion === 'revisar') estado.confirmando = true;
+  else if (accion === 'revisar') { estado.confirmando = true; estado.informeEnvio = null; }
   else if (accion === 'cancelar') estado.confirmando = false;
   else if (accion === 'enviar') {
     const { r } = calcular();

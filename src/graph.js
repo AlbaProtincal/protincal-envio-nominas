@@ -1,6 +1,6 @@
 // Conexión con Microsoft 365 (Microsoft Graph): inicio de sesión, OneDrive, Excel y correo.
 // Escribe solo lo que la app confirma: PDF nuevos (sin sobrescribir), carpetas y el estado de contabilidad.
-import { CONFIG } from './config.js?v=mwqacrug';
+import { CONFIG } from './config.js?v=mwsvmfty';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 let pca = null;
@@ -56,7 +56,9 @@ async function pedir(url, { metodo = 'GET', cuerpo, tipo, extra = {} } = {}) {
     try { detalle = (await r.json()).error?.message ?? ''; } catch { /* sin detalle */ }
     throw new ErrorGraph(r.status, detalle || `Microsoft respondió ${r.status}`);
   }
-  return r.status === 204 ? null : r.json();
+  if (r.status === 204 || r.status === 202) return null;
+  const texto = await r.text();
+  return texto ? JSON.parse(texto) : null;
 }
 
 const ruta = (p) => p.split('/').map(encodeURIComponent).join('/');
@@ -181,4 +183,54 @@ export async function guardarJson(base, subruta, datos, etag) {
     (etag ? '' : '?@microsoft.graph.conflictBehavior=fail');
   const it = await pedir(url, { metodo: 'PUT', cuerpo: bytes, tipo: 'application/json', extra: etag ? { 'If-Match': etag } : {} });
   return it.eTag;
+}
+
+/** Descarga un fichero de OneDrive por su id. */
+export async function descargarPorId(base, id) {
+  const it = await pedir(`/drives/${base.drive}/items/${id}?$select=name,size,@microsoft.graph.downloadUrl`);
+  return descargar({ nombre: it.name, descarga: it['@microsoft.graph.downloadUrl'] });
+}
+
+function base64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+// /me/sendMail admite unos 4 MB por petición; en base64 los adjuntos crecen un 33 %.
+export const MAX_TOTAL = 2.8 * 1024 * 1024;
+
+/**
+ * Envía un correo desde el buzón de la sesión con /me/sendMail (solo necesita el permiso Mail.Send)
+ * y lo guarda en Enviados. El logo de la firma va como adjunto en línea.
+ * @param {{ para: string, asunto: string, html: string, adjuntos: Array<{nombre, bytes}>, logo?: {bytes, cid} }} c
+ */
+export async function enviarCorreo({ para, asunto, html, adjuntos, logo }) {
+  const total = adjuntos.reduce((n, a) => n + a.bytes.length, 0) + (logo?.bytes.length ?? 0);
+  if (total > MAX_TOTAL) throw new Error(`Los adjuntos pesan ${(total / 1048576).toFixed(1)} MB, más de lo que admite el envío automático: envíalo a mano`);
+  const fichero = (nombre, tipo, bytes, extra = {}) => ({ '@odata.type': '#microsoft.graph.fileAttachment', name: nombre, contentType: tipo, contentBytes: base64(bytes), ...extra });
+  await pedir('/me/sendMail', { metodo: 'POST', cuerpo: {
+    message: {
+      subject: asunto,
+      body: { contentType: 'HTML', content: html },
+      toRecipients: [{ emailAddress: { address: para } }],
+      attachments: [
+        ...(logo ? [fichero('logo-protincal.jpg', 'image/jpeg', logo.bytes, { isInline: true, contentId: logo.cid })] : []),
+        ...adjuntos.map((a) => fichero(a.nombre, 'application/pdf', a.bytes)),
+      ],
+    },
+    saveToSentItems: true,
+  } });
+}
+
+/**
+ * Busca en Enviados un correo por asunto y destinatario y devuelve los nombres de sus adjuntos (sin el logo).
+ * @returns {Promise<string[]|null>} null si no aparece
+ */
+export async function buscarEnviado(asunto, para, desdeIso) {
+  const filtro = `sentDateTime ge ${desdeIso} and subject eq '${asunto.replace(/'/g, "''")}'`;
+  const pag = await pedir(`/me/mailFolders/sentitems/messages?$filter=${encodeURIComponent(filtro)}` +
+    '&$select=subject,toRecipients,sentDateTime&$expand=attachments($select=name,isInline)&$top=10');
+  const m = (pag.value ?? []).find((x) => (x.toRecipients ?? []).some((d) => d.emailAddress?.address?.toLowerCase() === para.toLowerCase()));
+  return m ? (m.attachments ?? []).filter((a) => !a.isInline).map((a) => a.name) : null;
 }
