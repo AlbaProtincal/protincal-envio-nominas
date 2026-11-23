@@ -1,16 +1,16 @@
 // Reúne todo lo que necesita el motor para un mes, leyéndolo de OneDrive y del correo.
-import { CONFIG } from './config.js?v=mwsw0c2u';
-import { carpetasDelMes, dosCifras, palabras, pareceConjuntoSS, periodoSeguros } from './motor.js?v=mwsw0c2u';
-import { analizarPaginaSS, planSS, cortarSS } from './seguros.js?v=mwsw0c2u';
-import { analizarPagina, leerPaginas, dividirPdf } from './dividir.js?v=mwsw0c2u';
-import * as graph from './graph.js?v=mwsw0c2u';
-import { leerXlsx } from './xlsx.js?v=mwsw0c2u';
-import { RUTAS, esExcelCostes, leerControl, estadoVacio, marcar } from './contabilidad.js?v=mwsw0c2u';
+import { CONFIG } from './config.js?v=mwsw5t2w';
+import { carpetasDelMes, dosCifras, palabras, pareceConjuntoSS, periodoSeguros } from './motor.js?v=mwsw5t2w';
+import { analizarPaginaSS, planSS, cortarSS } from './seguros.js?v=mwsw5t2w';
+import { analizarPagina, leerPaginas, dividirPdf } from './dividir.js?v=mwsw5t2w';
+import * as graph from './graph.js?v=mwsw5t2w';
+import { leerXlsx } from './xlsx.js?v=mwsw5t2w';
+import { RUTAS, esExcelCostes, leerControl, estadoVacio, marcar } from './contabilidad.js?v=mwsw5t2w';
 
 let pdfjs = null;
 async function cargarPdfjs() {
   if (!pdfjs) {
-    pdfjs = await import('../vendor/pdf.min.mjs?v=mwsw0c2u');
+    pdfjs = await import('../vendor/pdf.min.mjs?v=mwsw5t2w');
     pdfjs.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
   }
   return pdfjs;
@@ -174,7 +174,7 @@ export async function ejecutarSS(prep, avisar = () => {}) {
   if (!yaDivididos) {
     // Las subcarpetas RLC y RNT pueden no existir todavía.
     for (const tipo of new Set(plan.ficheros.map((f) => f.tipo))) await graph.asegurarCarpeta(base, carpetaSS, tipo);
-    const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js?v=mwsw0c2u');
+    const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js?v=mwsw5t2w');
     const salidas = await cortarSS(plan, bytes, { PDFDocument });
     for (const [i, f] of salidas.entries()) {
       avisar(`Guardando ${f.tipo}/${f.nombre} (${i + 1} de ${salidas.length})…`);
@@ -204,7 +204,7 @@ export async function prepararDivision(mes, anio, porDividir) {
   const f = raiz.find((x) => !x.esCarpeta && x.nombre === porDividir.origen);
   if (!f) return { ok: false, motivo: `No encuentro ${porDividir.origen} en ${c.nominas}` };
   const yaHay = ((await graph.listar(base, `${c.nominas}/${porDividir.destino}`)) ?? []).filter((x) => !x.esCarpeta);
-  const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js?v=mwsw0c2u');
+  const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js?v=mwsw5t2w');
   const r = await dividirPdf(await graph.descargar(f), mes, anio, { pdfjs: await cargarPdfjs(), PDFDocument });
   if (!r.ok) return { ok: false, motivo: 'No se puede dividir este PDF. No se ha tocado ningún fichero.', errores: r.errores };
   const existentes = new Set(yaHay.map((x) => x.nombre.toLowerCase()));
@@ -269,6 +269,39 @@ export async function guardarMarca(mes, anio, clave, que, valor, quien) {
     try {
       const etagNuevo = await graph.guardarJson(base, ruta, nuevo, etag);
       return { guardado: nuevo, etag: etagNuevo };
+    } catch (e) {
+      if (!(e instanceof graph.ErrorGraph) || ![409, 412].includes(e.estado) || intento === 1) throw e;
+    }
+  }
+  throw new Error('No se ha podido guardar');
+}
+
+// ---- Entregas fuera del correo (WhatsApp, en mano…) -----------------------------------
+// Se guardan en Nóminas/MMAAAA/entregas MMAAAA.json: { version, mes, anio, entregas: { <id>: { cuando, quien } } }
+
+const rutaEntregas = (mes, anio) => {
+  const c = carpetasDelMes(mes, anio);
+  return `${c.nominas}/entregas ${c.nominas.split('/').pop()}.json`;
+};
+
+export async function cargarEntregas(mes, anio) {
+  const base = await graph.carpetaBase();
+  const { datos } = await graph.leerJson(base, rutaEntregas(mes, anio));
+  return datos?.entregas ?? {};
+}
+
+/** Marca o desmarca un cliente como entregado por otra vía. Relee antes de guardar para no pisar a nadie. */
+export async function guardarEntrega(mes, anio, id, valor, quien) {
+  const base = await graph.carpetaBase();
+  const ruta = rutaEntregas(mes, anio);
+  for (let intento = 0; intento < 2; intento++) {
+    const { datos, etag } = await graph.leerJson(base, ruta);
+    const nuevo = datos ?? { version: 1, mes, anio, entregas: {} };
+    if (valor) nuevo.entregas[id] = { cuando: new Date().toISOString(), quien };
+    else delete nuevo.entregas[id];
+    try {
+      await graph.guardarJson(base, ruta, nuevo, etag);
+      return nuevo.entregas;
     } catch (e) {
       if (!(e instanceof graph.ErrorGraph) || ![409, 412].includes(e.estado) || intento === 1) throw e;
     }

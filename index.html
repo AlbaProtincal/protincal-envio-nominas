@@ -66,6 +66,7 @@ code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
 .prueba input { margin-top: 3px; width: 18px; height: 18px; }
 .b.prim.peligro { background: var(--mal); border-color: var(--mal); }
 .informe { margin-bottom: 16px; }
+.b.mini { padding: 3px 10px; font-size: 13px; }
 .sec { background: var(--papel); border: 1px solid var(--linea); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .sec.atencion { border-left: 4px solid var(--mal); }
 .sec > header { display: flex; align-items: baseline; gap: 10px; }
@@ -137,7 +138,7 @@ code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
 <script>
   // Si el navegador tiene guardada una página antigua, se descarga la nueva y se recarga (una sola vez).
   (function () {
-    const VERSION = 'mwsw0c2u';
+    const VERSION = 'mwsw5t2w';
     fetch('version.txt', { cache: 'no-store' }).then((r) => r.ok ? r.text() : '').then((v) => {
       v = v.trim();
       if (!v || v === VERSION || sessionStorage.getItem('recargado') === v) return;
@@ -146,6 +147,6 @@ code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
     }).catch(() => {});
   })();
 </script>
-<script type="module" src="src/app.js?v=mwsw0c2u"></script>
+<script type="module" src="src/app.js?v=mwsw5t2w"></script>
 </body>
 </html>

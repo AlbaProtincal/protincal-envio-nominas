@@ -5,8 +5,8 @@
 // La parte que decide es pura y se prueba sin PDF. Cortar usa pdf-lib, igual que las nóminas.
 // Regla de seguridad: si una sola página no se lee con certeza, no se corta ese PDF.
 
-import { palabras, dosCifras } from './motor.js?v=mwsw0c2u';
-import { lineas } from './dividir.js?v=mwsw0c2u';
+import { palabras, dosCifras } from './motor.js?v=mwsw5t2w';
+import { lineas } from './dividir.js?v=mwsw5t2w';
 
 // Une los trozos de una línea. Algunos PDF de la Seguridad Social parten las palabras en las letras con
 // tilde ("Raz" + "ó" + "n"): si un trozo empieza justo donde acaba el anterior, van pegados.

@@ -1,12 +1,12 @@
 // Pantalla del pre-chequeo. Dibuja lo que decide el motor; no decide nada por su cuenta.
 // De momento trabaja con datos de demostración: la lectura de OneDrive y el envío real
 // se conectan cuando la app esté registrada en Microsoft 365.
-import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwsw0c2u';
-import { demo } from './demo.js?v=mwsw0c2u';
-import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwsw0c2u';
-import * as graph from './graph.js?v=mwsw0c2u';
-import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca } from './datos.js?v=mwsw0c2u';
-import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwsw0c2u';
+import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwsw5t2w';
+import { demo } from './demo.js?v=mwsw5t2w';
+import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwsw5t2w';
+import * as graph from './graph.js?v=mwsw5t2w';
+import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca, cargarEntregas, guardarEntrega } from './datos.js?v=mwsw5t2w';
+import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwsw5t2w';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -33,6 +33,7 @@ const estado = {
   // Modo prueba (solo con ?prueba en la dirección): todos los correos van al buzón de la sesión, con el destinatario real en el asunto.
   modoPrueba: new URLSearchParams(location.search).has('prueba'),
   enviando: false,
+  entregas: {}, // clientes que no reciben por correo y ya tienen su nómina por otra vía: { id: { cuando, quien } }
   informeEnvio: null, // [{ id, email, ok, detalle }] del último envío
   conjuntosSS: null, // en modo real, los PDF conjuntos encontrados al cargar el mes
   excluidos: new Set(),
@@ -571,10 +572,37 @@ function dibujarContenido() {
     ${seccion('enviados', 'Ya enviados este mes', r.yaEnviados.length, r.yaEnviados.length
       ? `<ul class="lista">${r.yaEnviados.map((c) => filaCliente(c, { extra: `<span class="pil ok">${esc(estado.enviados.find((e) => e.id === c.id)?.cuando ?? 'Enviado')}</span>` })).join('')}</ul>`
       : '<p class="vacio">Todavía no se ha enviado nada.</p>')}
-    <details class="sec plegada" ${r.noSeEnvia.some((c) => c.cuenta.nominas) ? 'open' : ''}><summary>No se envían por correo (${r.noSeEnvia.length})</summary>
+    <details class="sec plegada" ${r.noSeEnvia.some((c) => c.cuenta.nominas && !estado.entregas[c.id]) ? 'open' : ''}><summary>No se envían por correo (${r.noSeEnvia.length})</summary>
       <p class="ayuda">La app no les envía nada. Si tienen nómina este mes, hay que hacerla llegar por otra vía.</p>
-      <ul class="lista">${r.noSeEnvia.map((c) => filaCliente(c, { extra: `${c.cuenta.nominas ? `<span class="pil ojo">${plural(c.cuenta.nominas, 'nómina', 'nóminas')} este mes</span>` : ''}<span class="pil">${esc(c.notas || 'Maestro: NADA')}</span>` })).join('')}</ul></details>
+      <ul class="lista">${r.noSeEnvia.map((c) => filaCliente(c, { extra: extraNoSeEnvia(c) })).join('')}</ul></details>
     <footer class="pie">Carpetas: <code>${esc(r.carpetas.nominas)}</code> · <code>${esc(r.carpetas.rnt)}</code> · <code>${esc(r.carpetas.rlc)}</code></footer>`;
+}
+
+function extraNoSeEnvia(c) {
+  const e = estado.entregas[c.id];
+  const via = `<span class="pil">${esc(c.notas || 'Maestro: NADA')}</span>`;
+  if (e) {
+    return `<span class="pil ok">Entregada ${esc(fecha(e.cuando))}</span>${via}
+      <button class="b mini" data-accion="entrega" data-id="${esc(c.id)}" data-valor="no">Deshacer</button>`;
+  }
+  if (!c.cuenta.nominas) return via;
+  return `<span class="pil ojo">${plural(c.cuenta.nominas, 'nómina', 'nóminas')} este mes</span>${via}
+    <button class="b mini" data-accion="entrega" data-id="${esc(c.id)}" data-valor="si">Marcar como entregada</button>`;
+}
+
+async function accionEntrega(id, valor) {
+  const quien = estado.usuario?.correo ?? 'demostración';
+  if (estado.modo !== 'real') {
+    if (valor) estado.entregas[id] = { cuando: new Date().toISOString(), quien }; else delete estado.entregas[id];
+    dibujar(); return;
+  }
+  try {
+    estado.entregas = await guardarEntrega(estado.mes, estado.anio, id, valor, quien);
+    estado.aviso = valor ? `${id}: marcada como entregada.` : `${id}: desmarcada.`;
+  } catch (e) {
+    estado.aviso = `No se ha podido guardar en OneDrive: ${e.message}`;
+  }
+  dibujar();
 }
 
 function dibujar() {
@@ -617,6 +645,7 @@ async function cargar(mes, anio, { probarAnterior = false } = {}) {
       estado.enviadosOutlook = d.enviadosOutlook;
       estado.conjuntosSS = d.conjuntosSS;
       estado.avisosCarga.push(...d.avisos);
+      try { estado.entregas = await cargarEntregas(estado.mes, estado.anio); } catch { estado.entregas = {}; }
     }
     estado.enviados = []; estado.excluidos = new Set(); estado.abiertos = new Set();
   } catch (e) {
@@ -663,6 +692,7 @@ document.addEventListener('click', (ev) => {
     return;
   }
   // Solo lectura: en modo real no se ejecuta nada que envíe o modifique.
+  if (accion === 'entrega') { accionEntrega(id, el.dataset.valor === 'si'); return; }
   if (accion === 'modo-prueba') { estado.modoPrueba = el.checked; dibujar(); return; }
   if (estado.modo === 'real' && accion === 'enviar') { enviarReal(); return; }
   if (estado.modo === 'real' && ['dividir', 'no-enviar'].includes(accion)) return;
