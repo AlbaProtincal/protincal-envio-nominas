@@ -137,7 +137,7 @@ code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
 <script>
   // Si el navegador tiene guardada una página antigua, se descarga la nueva y se recarga (una sola vez).
   (function () {
-    const VERSION = 'mwsvuvih';
+    const VERSION = 'mwsw04xa';
     fetch('version.txt', { cache: 'no-store' }).then((r) => r.ok ? r.text() : '').then((v) => {
       v = v.trim();
       if (!v || v === VERSION || sessionStorage.getItem('recargado') === v) return;
@@ -146,6 +146,6 @@ code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
     }).catch(() => {});
   })();
 </script>
-<script type="module" src="src/app.js?v=mwsvuvih"></script>
+<script type="module" src="src/app.js?v=mwsw04xa"></script>
 </body>
 </html>

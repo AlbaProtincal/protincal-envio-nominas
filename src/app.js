@@ -1,12 +1,12 @@
 // Pantalla del pre-chequeo. Dibuja lo que decide el motor; no decide nada por su cuenta.
 // De momento trabaja con datos de demostración: la lectura de OneDrive y el envío real
 // se conectan cuando la app esté registrada en Microsoft 365.
-import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwsvuvih';
-import { demo } from './demo.js?v=mwsvuvih';
-import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwsvuvih';
-import * as graph from './graph.js?v=mwsvuvih';
-import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca } from './datos.js?v=mwsvuvih';
-import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwsvuvih';
+import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwsw04xa';
+import { demo } from './demo.js?v=mwsw04xa';
+import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwsw04xa';
+import * as graph from './graph.js?v=mwsw04xa';
+import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca } from './datos.js?v=mwsw04xa';
+import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwsw04xa';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -30,7 +30,8 @@ const estado = {
   contaCargando: false,
   contaAbiertos: new Set(),
   guardando: null, // clave de la empresa cuya marca se está guardando
-  modoPrueba: true, // envío real: todos los correos van a la cuenta de la sesión, con el destinatario real en el asunto
+  // Modo prueba (solo con ?prueba en la dirección): todos los correos van al buzón de la sesión, con el destinatario real en el asunto.
+  modoPrueba: new URLSearchParams(location.search).has('prueba'),
   enviando: false,
   informeEnvio: null, // [{ id, email, ok, detalle }] del último envío
   conjuntosSS: null, // en modo real, los PDF conjuntos encontrados al cargar el mes
@@ -316,7 +317,7 @@ function cabeceraHtml(ss) {
       <button class="pest" data-accion="vista" data-id="contabilidad" aria-current="${estado.vista === 'contabilidad' ? 'page' : 'false'}">Contabilidad</button>
     </nav>
     ${real
-      ? '<p class="demo" role="note">Versión de prueba: lee tus carpetas y tu correo. Todavía no envía correos ni modifica el maestro. Solo divide los seguros sociales y las nóminas, y guarda las marcas de contabilidad, siempre cuando tú lo pides.</p>'
+      ? '<p class="demo" role="note">Versión de prueba: lee tus carpetas y tu correo. Envía las nóminas, divide los seguros sociales y las nóminas y guarda las marcas de contabilidad, siempre cuando tú lo confirmas. Todavía no modifica el maestro.</p>'
       : '<p class="demo" role="note">Demostración con datos inventados. Inicia sesión para ver tus carpetas reales.</p>'}
     ${estado.errorCarga ? `<p class="error" role="alert">${esc(estado.errorCarga)}</p>` : ''}
     ${estado.avisosCarga.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}`;
@@ -536,8 +537,7 @@ function dibujarContenido() {
       ${[...new Set(seleccion.map(textoCorreo))].map((t) => `<p class="eti">Así llega el correo <span class="tenue">(${plural(seleccion.filter((c) => textoCorreo(c) === t).length, 'correo', 'correos')})</span></p>
         <div class="vista">${cuerpoHtml(t, 'assets/logo-firma.jpg')}</div>`).join('')}
       <p class="tenue">Total: ${kb(total)}. Tras enviar se comprueba en Enviados que cada correo ha salido con sus adjuntos.</p>
-      ${estado.modo === 'real' ? `<label class="prueba"><input type="checkbox" data-accion="modo-prueba" ${estado.modoPrueba ? 'checked' : ''}>
-        <span><strong>Modo prueba:</strong> todos los correos llegan a ${esc(estado.usuario?.correo ?? 'tu buzón')}, con el destinatario real en el asunto. A los clientes no les llega nada.</span></label>` : ''}
+      ${estado.modo === 'real' && estado.modoPrueba ? `<p class="prueba"><strong>Modo prueba:</strong> todos los correos llegan a ${esc(estado.usuario?.correo ?? 'tu buzón')}, con el destinatario real en el asunto. A los clientes no les llega nada.</p>` : ''}
       <div class="botones"><button class="b prim ${estado.modo === 'real' && !estado.modoPrueba ? 'peligro' : ''}" data-accion="enviar" ${estado.enviando ? 'disabled' : ''}>${
   estado.modo !== 'real' ? `Enviar ${plural(seleccion.length, 'correo', 'correos')}`
     : estado.modoPrueba ? `Enviar ${plural(seleccion.length, 'correo', 'correos')} de prueba a mi buzón`

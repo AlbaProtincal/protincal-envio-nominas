@@ -1,6 +1,6 @@
 // Conexión con Microsoft 365 (Microsoft Graph): inicio de sesión, OneDrive, Excel y correo.
 // Escribe solo lo que la app confirma: PDF nuevos (sin sobrescribir), carpetas y el estado de contabilidad.
-import { CONFIG } from './config.js?v=mwsvuvih';
+import { CONFIG } from './config.js?v=mwsw04xa';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 let pca = null;
