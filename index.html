@@ -134,6 +134,18 @@ code { font: 400 13px/1.4 var(--mono); overflow-wrap: anywhere; }
 <body>
 <main id="app"><p class="vacio">Cargando…</p></main>
 <script src="vendor/msal-browser.min.js"></script>
-<script type="module" src="src/app.js?v=mwsvmfty"></script>
+<script>
+  // Si el navegador tiene guardada una página antigua, se descarga la nueva y se recarga (una sola vez).
+  (function () {
+    const VERSION = 'mwsvs7v3';
+    fetch('version.txt', { cache: 'no-store' }).then((r) => r.ok ? r.text() : '').then((v) => {
+      v = v.trim();
+      if (!v || v === VERSION || sessionStorage.getItem('recargado') === v) return;
+      sessionStorage.setItem('recargado', v);
+      Promise.all([fetch('./', { cache: 'reload' }), fetch('index.html', { cache: 'reload' })]).finally(() => location.reload());
+    }).catch(() => {});
+  })();
+</script>
+<script type="module" src="src/app.js?v=mwsvs7v3"></script>
 </body>
 </html>

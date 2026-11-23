@@ -11,4 +11,8 @@ for (const f of ficheros) {
     .replace(/(src="src\/app\.js)(\?v=[\w]+)?(")/, `$1?v=${v}$3`);
   if (despues !== antes) writeFileSync(f, despues);
 }
+// version.txt: la página lo consulta sin caché y, si hay una versión más nueva, se recarga sola.
+writeFileSync('version.txt', v + '\n');
+const idx = readFileSync('index.html', 'utf8').replace(/const VERSION = '[\w]*';/, `const VERSION = '${v}';`);
+writeFileSync('index.html', idx);
 console.log('versión', v);
