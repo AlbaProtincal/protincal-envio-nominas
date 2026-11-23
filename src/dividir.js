@@ -6,7 +6,7 @@
 //
 // Regla de seguridad: si una sola página no se puede leer con certeza, no se divide nada.
 
-import { dosCifras, palabras } from './motor.js?v=mwsw04xa';
+import { dosCifras, palabras } from './motor.js?v=mwsw0c2u';
 
 const RE_DNI = /^(\d{8}[A-Z]|[XYZ]\d{7}[A-Z])$/;
 const RE_CIF = /^[A-HJNP-SUVW]\d{7}[0-9A-J]$/;

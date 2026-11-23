@@ -1,12 +1,12 @@
 // Pantalla del pre-chequeo. Dibuja lo que decide el motor; no decide nada por su cuenta.
 // De momento trabaja con datos de demostración: la lectura de OneDrive y el envío real
 // se conectan cuando la app esté registrada en Microsoft 365.
-import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwsw04xa';
-import { demo } from './demo.js?v=mwsw04xa';
-import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwsw04xa';
-import * as graph from './graph.js?v=mwsw04xa';
-import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca } from './datos.js?v=mwsw04xa';
-import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwsw04xa';
+import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwsw0c2u';
+import { demo } from './demo.js?v=mwsw0c2u';
+import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwsw0c2u';
+import * as graph from './graph.js?v=mwsw0c2u';
+import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca } from './datos.js?v=mwsw0c2u';
+import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwsw0c2u';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
@@ -317,7 +317,7 @@ function cabeceraHtml(ss) {
       <button class="pest" data-accion="vista" data-id="contabilidad" aria-current="${estado.vista === 'contabilidad' ? 'page' : 'false'}">Contabilidad</button>
     </nav>
     ${real
-      ? '<p class="demo" role="note">Versión de prueba: lee tus carpetas y tu correo. Envía las nóminas, divide los seguros sociales y las nóminas y guarda las marcas de contabilidad, siempre cuando tú lo confirmas. Todavía no modifica el maestro.</p>'
+      ? '<p class="demo" role="note">Lee tus carpetas y tu correo. Envía las nóminas, divide los seguros sociales y las nóminas y guarda las marcas de contabilidad, siempre cuando tú lo confirmas. Todavía no modifica el maestro.</p>'
       : '<p class="demo" role="note">Demostración con datos inventados. Inicia sesión para ver tus carpetas reales.</p>'}
     ${estado.errorCarga ? `<p class="error" role="alert">${esc(estado.errorCarga)}</p>` : ''}
     ${estado.avisosCarga.map((a) => `<p class="nota">${esc(a)}</p>`).join('')}`;

@@ -1,16 +1,16 @@
 // Reúne todo lo que necesita el motor para un mes, leyéndolo de OneDrive y del correo.
-import { CONFIG } from './config.js?v=mwsw04xa';
-import { carpetasDelMes, dosCifras, palabras, pareceConjuntoSS, periodoSeguros } from './motor.js?v=mwsw04xa';
-import { analizarPaginaSS, planSS, cortarSS } from './seguros.js?v=mwsw04xa';
-import { analizarPagina, leerPaginas, dividirPdf } from './dividir.js?v=mwsw04xa';
-import * as graph from './graph.js?v=mwsw04xa';
-import { leerXlsx } from './xlsx.js?v=mwsw04xa';
-import { RUTAS, esExcelCostes, leerControl, estadoVacio, marcar } from './contabilidad.js?v=mwsw04xa';
+import { CONFIG } from './config.js?v=mwsw0c2u';
+import { carpetasDelMes, dosCifras, palabras, pareceConjuntoSS, periodoSeguros } from './motor.js?v=mwsw0c2u';
+import { analizarPaginaSS, planSS, cortarSS } from './seguros.js?v=mwsw0c2u';
+import { analizarPagina, leerPaginas, dividirPdf } from './dividir.js?v=mwsw0c2u';
+import * as graph from './graph.js?v=mwsw0c2u';
+import { leerXlsx } from './xlsx.js?v=mwsw0c2u';
+import { RUTAS, esExcelCostes, leerControl, estadoVacio, marcar } from './contabilidad.js?v=mwsw0c2u';
 
 let pdfjs = null;
 async function cargarPdfjs() {
   if (!pdfjs) {
-    pdfjs = await import('../vendor/pdf.min.mjs?v=mwsw04xa');
+    pdfjs = await import('../vendor/pdf.min.mjs?v=mwsw0c2u');
     pdfjs.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
   }
   return pdfjs;
@@ -174,7 +174,7 @@ export async function ejecutarSS(prep, avisar = () => {}) {
   if (!yaDivididos) {
     // Las subcarpetas RLC y RNT pueden no existir todavía.
     for (const tipo of new Set(plan.ficheros.map((f) => f.tipo))) await graph.asegurarCarpeta(base, carpetaSS, tipo);
-    const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js?v=mwsw04xa');
+    const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js?v=mwsw0c2u');
     const salidas = await cortarSS(plan, bytes, { PDFDocument });
     for (const [i, f] of salidas.entries()) {
       avisar(`Guardando ${f.tipo}/${f.nombre} (${i + 1} de ${salidas.length})…`);
@@ -204,7 +204,7 @@ export async function prepararDivision(mes, anio, porDividir) {
   const f = raiz.find((x) => !x.esCarpeta && x.nombre === porDividir.origen);
   if (!f) return { ok: false, motivo: `No encuentro ${porDividir.origen} en ${c.nominas}` };
   const yaHay = ((await graph.listar(base, `${c.nominas}/${porDividir.destino}`)) ?? []).filter((x) => !x.esCarpeta);
-  const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js?v=mwsw04xa');
+  const { PDFDocument } = await import('../vendor/pdf-lib.esm.min.js?v=mwsw0c2u');
   const r = await dividirPdf(await graph.descargar(f), mes, anio, { pdfjs: await cargarPdfjs(), PDFDocument });
   if (!r.ok) return { ok: false, motivo: 'No se puede dividir este PDF. No se ha tocado ningún fichero.', errores: r.errores };
   const existentes = new Set(yaHay.map((x) => x.nombre.toLowerCase()));
