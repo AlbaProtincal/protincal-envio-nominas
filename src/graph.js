@@ -1,6 +1,6 @@
 // Conexión con Microsoft 365 (Microsoft Graph): inicio de sesión, OneDrive, Excel y correo.
 // Escribe solo lo que la app confirma: PDF nuevos (sin sobrescribir), carpetas y el estado de contabilidad.
-import { CONFIG } from './config.js?v=mwsvs7v3';
+import { CONFIG } from './config.js?v=mwsvuvih';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 let pca = null;
@@ -187,7 +187,8 @@ export async function guardarJson(base, subruta, datos, etag) {
 
 /** Descarga un fichero de OneDrive por su id. */
 export async function descargarPorId(base, id) {
-  const it = await pedir(`/drives/${base.drive}/items/${id}?$select=name,size,@microsoft.graph.downloadUrl`);
+  // Sin $select: con $select Graph no devuelve el enlace de descarga.
+  const it = await pedir(`/drives/${base.drive}/items/${id}`);
   return descargar({ nombre: it.name, descarga: it['@microsoft.graph.downloadUrl'] });
 }
 
