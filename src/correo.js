@@ -28,11 +28,11 @@ const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
  * @param {string} [srcLogo] Origen de la imagen: `cid:…` en el correo real; una ruta en la vista previa
  */
 export function cuerpoHtml(texto, srcLogo = `cid:${CID_LOGO}`) {
-  const base = 'font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000000;margin:0 0 12pt 0;';
+  const base = 'font-family:Aptos,Calibri,Arial,sans-serif;font-size:12pt;color:#000000;margin:0 0 12pt 0;';
   const parrafos = String(texto).split(/\n{2,}/).map((p) => `<p style="${base}">${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
   return `<div>${parrafos}` +
     `<p style="${base}margin-bottom:6pt;">${FIRMA.map(esc).join('<br>')}</p>` +
     `<p style="margin:0 0 12pt 0;"><img src="${esc(srcLogo)}" alt="PROTINCAL Asesores" width="210" style="width:210px;height:auto;border:0;"></p>` +
-    AVISO_LEGAL.map((p) => `<p style="font-family:Calibri,Arial,sans-serif;font-size:8pt;line-height:1.5;color:#595959;margin:0 0 2pt 0;text-align:justify;">${esc(p)}</p>`).join('') +
+    AVISO_LEGAL.map((p) => `<p style="font-family:Aptos,Calibri,Arial,sans-serif;font-size:8pt;line-height:1.5;color:#595959;margin:0 0 2pt 0;text-align:justify;">${esc(p)}</p>`).join('') +
     '</div>';
 }

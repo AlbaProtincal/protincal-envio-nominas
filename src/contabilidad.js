@@ -8,7 +8,7 @@
 //
 // Este módulo es puro: no lee nada, solo combina. Se prueba sin OneDrive.
 
-import { dosCifras, palabras } from './motor.js?v=mwsw5t2w';
+import { dosCifras, palabras } from './motor.js?v=mwujllld';
 
 export const RUTAS = (mes, anio) => {
   const carpeta = `Nóminas/${dosCifras(mes)}${anio}`;

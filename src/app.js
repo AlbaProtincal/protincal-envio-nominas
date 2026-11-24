@@ -1,12 +1,12 @@
 // Pantalla del pre-chequeo. Dibuja lo que decide el motor; no decide nada por su cuenta.
 // De momento trabaja con datos de demostración: la lectura de OneDrive y el envío real
 // se conectan cuando la app esté registrada en Microsoft 365.
-import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwsw5t2w';
-import { demo } from './demo.js?v=mwsw5t2w';
-import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwsw5t2w';
-import * as graph from './graph.js?v=mwsw5t2w';
-import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca, cargarEntregas, guardarEntrega } from './datos.js?v=mwsw5t2w';
-import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwsw5t2w';
+import { leerMaestro, prechequeo, MESES, dosCifras } from './motor.js?v=mwujllld';
+import { demo } from './demo.js?v=mwujllld';
+import { cuerpoHtml, CID_LOGO } from './correo.js?v=mwujllld';
+import * as graph from './graph.js?v=mwujllld';
+import { cargarMes, prepararSS, ejecutarSS, prepararDivision, ejecutarDivision, cargarContabilidad, guardarMarca, cargarEntregas, guardarEntrega } from './datos.js?v=mwujllld';
+import { tablero, marcar, leerControl, estadoVacio, textoPaso, formatoEuros, PASO } from './contabilidad.js?v=mwujllld';
 
 const estado = {
   mes: demo.mes, anio: demo.anio,
